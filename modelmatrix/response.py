@@ -2,10 +2,8 @@
 Responses
 =========
 
-The response of a model, built from the columns of `X` as a
-`ModelSpec` builds its design: `ModelSpec(terms, response=...)`,
-then `spec.build_response(X)`. A response is a column (or a list of
-columns) of `X`, or one of
+The response of a model, built from the columns of a dataframe as a
+`ModelSpec` builds its design from them. A response is one of
 
 - `Surv`: a survival response, as R's `Surv(time, status)` or
   `Surv(start, stop, status)`;
@@ -14,12 +12,16 @@ columns) of `X`, or one of
 - `Multinomial`: the class of each observation, or counts of
   each class.
 
-A response is fit on the `X` the `ModelSpec` is fit on, e.g. to
-learn the levels of a categorical, so that it is coded the same way
-on new data.
+A response is fit, e.g. to learn the levels of a categorical, so that
+it is coded the same way on new data: `y = Surv('time',
+'status').fit_transform(D)`. To leave its columns out of a design,
+`ModelSpec([wildcard(exclude=response)])` is the design of R's `y ~ .`.
 """
 
 import numpy as np, pandas as pd
+from sklearn.exceptions import NotFittedError
+
+from ._native import _from_native
 
 
 class Response(object):
@@ -27,16 +29,66 @@ class Response(object):
     """
     Base class of the responses: the columns of `X` used, `fit`
     and `transform`.
+
+    `X` is a :py:class:`pd.DataFrame`, a dataframe of another backend
+    supported by narwhals (e.g. polars), whose response is then in that
+    backend, or an :py:class:`np.ndarray`, whose columns are integers.
     """
 
     columns = ()
 
-    def fit(self, X):
-        for col in self.columns:
-            _values(X, col)   # raises if the column is not in X
+    def fit(self, X, y=None):
+        """
+        Fit the response on `X`, e.g. its levels.
+
+        Parameters
+        ----------
+        X : dataframe or np.ndarray
+            Data holding the columns of the response.
+
+        y : None
+            Ignored.
+        """
+        X, _ = _from_native(X, set(self.columns))
+        self._fit(X)
+        self.columns_ = self.columns
         return self
 
     def transform(self, X):
+        """
+        Build the response from `X`, after fitting.
+
+        Parameters
+        ----------
+        X : dataframe or np.ndarray
+            Data holding the columns of the response.
+
+        Returns
+        -------
+        y : series, dataframe or np.ndarray
+            The response, e.g. for `fit(X, y)` of an estimator: of the
+            backend of *X* (e.g. a :py:class:`pd.Series` for a
+            :py:class:`pd.DataFrame`), an :py:class:`np.ndarray` for
+            an array.
+        """
+        if not hasattr(self, 'columns_'):
+            raise NotFittedError(f'this {type(self).__name__} is not fitted yet: '
+                                 'call fit (or fit_transform) first')
+        X, to_native = _from_native(X, set(self.columns))
+        y = self._transform(X)
+        return y if to_native is None else to_native(y)
+
+    def fit_transform(self, X, y=None):
+        """
+        Fit the response on `X` and build it.
+        """
+        return self.fit(X).transform(X)
+
+    def _fit(self, X):
+        for col in self.columns:
+            _values(X, col)   # raises if the column is not in X
+
+    def _transform(self, X):
         raise NotImplementedError
 
     def __repr__(self):
@@ -70,39 +122,6 @@ def _output(D, X):
     if isinstance(X, pd.DataFrame):
         return D
     return D.to_numpy()
-
-
-class _Columns(Response):
-
-    # a column, or a list of columns, of X as they are
-
-    def __init__(self, columns, single):
-        self.columns = tuple(columns)
-        self.single = single
-
-    def transform(self, X):
-        if isinstance(X, pd.DataFrame):
-            if self.single:
-                return X[self.columns[0]].copy()
-            return X[list(self.columns)].copy()
-        X = np.asarray(X)
-        if self.single:
-            return X[:, self.columns[0]]
-        return X[:, list(self.columns)]
-
-    def __repr__(self):
-        if self.single:
-            return repr(self.columns[0])
-        return repr(list(self.columns))
-
-
-def _as_response(response):
-    # a Response for the `response` parameter of ModelSpec
-    if response is None or isinstance(response, Response):
-        return response
-    if isinstance(response, list):
-        return _Columns(response, single=False)
-    return _Columns((response,), single=True)
 
 
 class Surv(Response):
@@ -155,11 +174,10 @@ class Surv(Response):
             return (self.stop, self.status)
         return (self.start, self.stop, self.status)
 
-    def fit(self, X):
-        self.transform(X)   # checks the columns and their values
-        return self
+    def _fit(self, X):
+        self._transform(X)   # checks the columns and their values
 
-    def transform(self, X):
+    def _transform(self, X):
         status = _numeric(X, self.status)   # booleans as 0 and 1
         observed = status[status.notna()]
         if not observed.isin([0, 1]).all():
@@ -231,12 +249,12 @@ class Binomial(Response):
             return (self.successes,)
         return (self.successes, self.trials)
 
-    def fit(self, X):
+    def _fit(self, X):
         if self.trials is not None:
             if self.output not in ('counts', 'proportion'):
                 raise ValueError(f"output should be 'counts' or 'proportion', got {self.output!r}")
-            self.transform(X)   # checks the values
-            return self
+            self._transform(X)   # checks the values
+            return
         values = _values(X, self.successes)
         observed = values[values.notna()]
         if isinstance(values.dtype, pd.CategoricalDtype):
@@ -261,9 +279,8 @@ class Binomial(Response):
         else:
             self.level_ = levels[1]
         self.levels_ = levels
-        return self
 
-    def transform(self, X):
+    def _transform(self, X):
         index = X.index if isinstance(X, pd.DataFrame) else None
         if self.trials is None:
             values = _values(X, self.successes)
@@ -339,10 +356,10 @@ class Multinomial(Response):
             return tuple(self.classes)
         return (self.classes,)
 
-    def fit(self, X):
+    def _fit(self, X):
         if isinstance(self.classes, list):
-            self.transform(X)   # checks the counts
-            return self
+            self._transform(X)   # checks the counts
+            return
         if self.output not in ('labels', 'onehot'):
             raise ValueError(f"output should be 'labels' or 'onehot', got {self.output!r}")
         values = _values(X, self.classes)
@@ -350,9 +367,8 @@ class Multinomial(Response):
             self.levels_ = list(values.cat.categories)
         else:
             self.levels_ = sorted(values[values.notna()].unique())
-        return self
 
-    def transform(self, X):
+    def _transform(self, X):
         index = X.index if isinstance(X, pd.DataFrame) else None
         if isinstance(self.classes, list):
             D = pd.DataFrame({c: _numeric(X, c).to_numpy() for c in self.classes},

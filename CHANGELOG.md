@@ -4,11 +4,11 @@
 
 ### New features
 
-- **Responses:** `ModelSpec(terms, response=...)` and
-  `spec.build_response(X)`, the response built from the same data as the
-  design. A response is a column, a list of columns, or
+- **Responses**, built from the same data as the design, as a
+  `ModelSpec` builds it: `response.fit(D)`, then `response.transform(D)`
+  (or `fit_transform`), in the backend of `D` (e.g. polars).
   - `Surv(time, status)` or `Surv(start, stop, status)`, as R's: a
-    `pd.DataFrame` of these columns, as glmstar's `CoxFamily` or lifelines
+    dataframe of these columns, as glmstar's `CoxFamily` or lifelines
     take it;
   - `Binomial('y')` for a binary column (0/1, boolean or two levels; the
     second level, or `level=`, is a success), or `Binomial(successes,
@@ -18,20 +18,27 @@
     one-hot (`output='onehot'`), or `Multinomial([...])` for counts.
 
   Responses learn their levels at fit; a level unseen at fit raises.
-  The response's columns cannot be in a term.
-- **`wildcard`**, R's `.`: every column of `X` but the response, so
-  `ModelSpec([wildcard], response='y')` is `y ~ .`. `wildcard(pow=2)` is
-  `.^2`, `wildcard(exclude=['x'])` is `. - x`, `(wildcard, 'g')` is `.:g`,
-  and `pca(wildcard, n_components=3)` a feature of every column. It is
-  expanded at fit into `expanded_terms_`; columns that are terms already
-  are not repeated, as in R's `y ~ x + .`.
+- **`wildcard`**, R's `.`: every column of `X`, but those of
+  `wildcard(exclude=...)`, so `ModelSpec([wildcard(exclude='y')])` is the
+  design of `y ~ .`. `exclude` also takes a response, leaving out its
+  columns: `wildcard(exclude=Surv('time', 'status'))`. `wildcard(pow=2)`
+  is `.^2`, `(wildcard, 'g')` is `.:g`, and `pca(wildcard(exclude='y'),
+  n_components=3)` a feature of the columns. It is expanded at fit into
+  `expanded_terms_`; columns that are terms already are not repeated, as
+  in R's `y ~ x + .`. `build_submodel` expands it too.
 - `pca()`'s `name` is optional.
 - `fit(X, y)` checks that the indices of `X` and `y` agree when both are
   pandas objects.
 
+### Bug fixes
+
+- `poly`, `ns` and `bs` are fit on the observed values of their variable,
+  and are missing only in its missing rows: before, a single missing value
+  made every value of the feature missing (or, for `ns`, arbitrary).
+
 ### Documentation
 
-- A page on responses and the wildcard.
+- A page on responses and the wildcard, and on missing values.
 
 ## 0.1.0 (2026-10-26)
 

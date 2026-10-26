@@ -8,4 +8,4 @@ Responses
 .. autoclass:: modelmatrix.Binomial
 .. autoclass:: modelmatrix.Multinomial
 .. autoclass:: modelmatrix.Response
-   :members: fit, transform
+   :members: fit, transform, fit_transform

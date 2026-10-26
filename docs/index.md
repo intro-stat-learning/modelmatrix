@@ -14,7 +14,7 @@ pip install modelmatrix
 
 - [Building design matrices with `ModelSpec`](spec.md)
 - Features: [polynomials](poly.md), [splines](splines.md) and [PCA](PCA.md)
-- [Responses and the wildcard](responses.md): `y ~ .`, `Surv`, `Binomial` and `Multinomial`
+- [Responses and the wildcard](responses.md): `y ~ .`, `Surv`, `Binomial`, `Multinomial` and missing values
 - [ANOVA](anova.md) with `build_sequence`
 - [`ModelSpec` compared](comparison.md) with `ColumnTransformer`, patsy and formulaic
 - The [API reference](https://intro-stat-learning.github.io/modelmatrix/api/)

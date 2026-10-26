@@ -384,7 +384,6 @@ def test_default_params():
     assert MS().get_params() == {'terms': (), 'intercept': False,
                                  'categorical_features': None,
                                  'categorical_encoders': None,
-                                 'response': None,
                                  'sparse_output': False}
 
 def test_unfitted_raises_notfitted(D):
