@@ -1,5 +1,4 @@
 ---
-file_format: mystnb
 kernelspec:
   name: python3
   display_name: python3
@@ -39,19 +38,15 @@ differ on purpose; those are collected at the end.
 | sparse model matrices | yes (`sparse_output=True`) | yes (`sparse_threshold`) | no | yes (`output='sparse'`) |
 | input other than `pandas` (e.g. polars) | yes; output in the same backend | yes; output by `set_output` | no | yes |
 
-`ModelSpec` warns, when fit, that it moves to its own package in
-ISLP 0.7; the warning is silenced here.
-
 ```{code-cell} ipython3
-import pickle, warnings
-warnings.filterwarnings('ignore', message='ModelSpec will move')
+import pickle
 import numpy as np, pandas as pd
 import patsy, formulaic
 import sklearn
 
 from ISLP import load_data
-from ISLP import models as islp
-from ISLP.models import ModelSpec as MS
+import modelmatrix as mm
+from modelmatrix import ModelSpec as MS
 
 from sklearn.base import clone
 from sklearn.decomposition import PCA
@@ -67,9 +62,9 @@ print(f'patsy {patsy.__version__}, formulaic {formulaic.__version__}, '
       f'scikit-learn {sklearn.__version__}, pandas {pd.__version__}')
 ```
 
-The `ISLP` helpers are accessed as `islp.poly`, `islp.ns`, etc. rather
+The `modelmatrix` helpers are accessed as `mm.poly`, `mm.ns`, etc. rather
 than imported by name. Formula strings are evaluated in the calling
-namespace, so importing `ISLP`'s `bs` would silently replace patsy's
+namespace, so importing `modelmatrix`'s `bs` would silently replace patsy's
 `bs` inside `patsy.dmatrix('bs(Price, df=5)', ...)`.
 
 ## Terms are Python objects
@@ -79,7 +74,7 @@ with no registration or wrapper. Its state is fit when the `ModelSpec`
 is fit, and reused on new data.
 
 ```{code-cell} ipython3
-spline = islp.derived_feature(['Price'],
+spline = mm.derived_feature(['Price'],
                               encoder=SplineTransformer(n_knots=5),
                               name='spline(Price)')
 design = MS([spline, 'ShelveLoc'], intercept=True).fit(Carseats)
@@ -92,7 +87,7 @@ Python, for example a natural spline for every numeric column:
 ```{code-cell} ipython3
 numeric = [c for c in Carseats.columns.drop('Sales')
            if pd.api.types.is_numeric_dtype(Carseats[c])]
-design = MS([islp.ns(c, df=3) for c in numeric] + ['ShelveLoc', 'US'],
+design = MS([mm.ns(c, df=3) for c in numeric] + ['ShelveLoc', 'US'],
             intercept=True)
 design.fit_transform(Carseats).shape
 ```
@@ -103,9 +98,9 @@ encoded first. Here a PCA is fit to an orthogonal polynomial in
 scores are interacted with `US`:
 
 ```{code-cell} ipython3
-scores = islp.derived_feature([islp.poly('Price', 2),
+scores = mm.derived_feature([mm.poly('Price', 2),
                                'Income',
-                               islp.contrast('ShelveLoc', None)],
+                               mm.contrast('ShelveLoc', None)],
                               encoder=PCA(n_components=2),
                               name='pc')
 design = MS([scores, 'US', (scores, 'US')], intercept=True).fit(Carseats)
@@ -124,7 +119,7 @@ from sklearn.frozen import FrozenEstimator
 
 first, rest = Carseats.iloc[:200], Carseats.iloc[200:]
 knn = KNeighborsRegressor(10).fit(first[['Price', 'Income']], first['Sales'])
-knn_term = islp.derived_feature(['Price', 'Income'],
+knn_term = mm.derived_feature(['Price', 'Income'],
                                 encoder=FrozenEstimator(knn),
                                 name='knn',
                                 use_transform=False)   # its predictions
@@ -212,9 +207,9 @@ estimator. A term's parameter is named by the position of the term in
 `get_params()` lists them:
 
 ```{code-cell} ipython3
-spec = MS([islp.ns('Price', df=4),
+spec = MS([mm.ns('Price', df=4),
            'US',
-           ('ShelveLoc', islp.poly('Income', 2))], intercept=False)
+           ('ShelveLoc', mm.poly('Income', 2))], intercept=False)
 {k: v for k, v in spec.get_params().items()
  if k in ('terms__0__df', 'terms__2__1__degree')}
 ```
@@ -256,7 +251,7 @@ len(search.best_params_['modelspec__terms'])
 
 ```{code-cell} ipython3
 A = Carseats[['Price', 'Income']].to_numpy()
-(MS([0, islp.poly(1, 2)], intercept=True)
+(MS([0, mm.poly(1, 2)], intercept=True)
  .set_output(transform='pandas')
  .fit_transform(A)
  .head())
@@ -274,7 +269,7 @@ tuning the number of knots of the spline gives the same results.
 from sklearn.compose import ColumnTransformer, make_column_selector
 from sklearn.preprocessing import OneHotEncoder, PolynomialFeatures
 
-spline = islp.derived_feature(['Price'], encoder=SplineTransformer(n_knots=5),
+spline = mm.derived_feature(['Price'], encoder=SplineTransformer(n_knots=5),
                               name='spline')
 ms = MS([spline, 'ShelveLoc', 'Income'], intercept=False)
 
@@ -327,7 +322,7 @@ A fitted `ModelSpec` can be pickled, with all of its encoders, as can
 formulaic's `ModelSpec`; patsy's `DesignInfo` cannot.
 
 ```{code-cell} ipython3
-fitted = {'ModelSpec': lambda: MS(['Price', 'ShelveLoc', islp.bs('Price', df=5)],
+fitted = {'ModelSpec': lambda: MS(['Price', 'ShelveLoc', mm.bs('Price', df=5)],
                                   intercept=True).fit(Carseats),
           'patsy': lambda: patsy.dmatrix('Price + ShelveLoc + bs(Price, df=5)', Carseats).design_info,
           'formulaic': lambda: formulaic.model_matrix('Price + ShelveLoc + bs(Price, df=5)', Carseats).model_spec}
@@ -374,7 +369,7 @@ import polars as pl
 
 P = pl.from_pandas(Carseats).with_columns(
     pl.col('ShelveLoc').cast(pl.String).cast(pl.Enum(['Bad', 'Medium', 'Good'])))
-design = MS(['Price', 'US', islp.ordinal('ShelveLoc')], intercept=True).fit(P)
+design = MS(['Price', 'US', mm.ordinal('ShelveLoc')], intercept=True).fit(P)
 design.transform(P.head())
 ```
 
@@ -418,20 +413,18 @@ same_columns(MS(['Price', 'ShelveLoc', ('Price', 'ShelveLoc')], intercept=True).
 
 | | `ModelSpec` | `ColumnTransformer` | patsy | formulaic |
 |---|---|---|---|---|
-| a column of ones (intercept) | yes, with `intercept=True`, the default until ISLP 0.7 | no: `sklearn` estimators fit their own | yes | yes |
+| a column of ones (intercept) | only with `intercept=True` | no: `sklearn` estimators fit their own | yes | yes |
 | missing values | propagate as `NaN` rows | passed through; `OneHotEncoder` codes a missing level as a level of its own | rows dropped | rows dropped |
 | unused levels of a categorical | dropped | dropped (`OneHotEncoder` learns the levels it sees) | column of zeros | column of zeros |
 | level unseen when fit | error | error (`OneHotEncoder`'s default) | error | encoded as all zeros, with a warning |
 | string column, not categorical | error: use `astype('category')` or `contrast()` | as its transformer: `'passthrough'` keeps the strings | treated as categorical | treated as categorical |
 | interactions without main effects | product of each term's coding | (no interactions) | recoded to keep the model full rank | recoded to keep the model full rank |
 
-`ModelSpec`'s column of ones is set to change: `intercept=True` is its
-default only until ISLP 0.7, when `ModelSpec` moves to its own package
-and the default becomes `intercept=False`, as for a `ColumnTransformer`.
-Pass `intercept=True` for statsmodels' models (`OLS`, `GLM`, ...), which
-need the column, and `intercept=False` for `sklearn` and glmstar
-estimators, which fit their own intercept; the examples on this page
-pass it explicitly for this reason.
+`ModelSpec` adds no column of ones by default, as a `ColumnTransformer`:
+`sklearn` and glmstar estimators fit their own intercept. Pass
+`intercept=True` for statsmodels' models (`OLS`, `GLM`, ...), which
+need the column. (In ISLP before 0.7, `intercept=True` was the default;
+the examples on this page pass it explicitly.)
 
 Ordered categoricals are coded with contrasts by `ModelSpec`, patsy and
 formulaic. `ModelSpec` can

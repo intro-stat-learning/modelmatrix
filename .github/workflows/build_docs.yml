@@ -1,0 +1,86 @@
+# This builds and deploys the modelmatrix docs
+
+name: Build docs
+
+on:
+  workflow_dispatch:
+    inputs: null
+
+jobs:
+
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # setuptools_scm takes the version from the tags
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      # Jupyter Book 2 (mystmd) runs on Node
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+
+      # Install
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y r-base
+          pip install .[doc]
+          # the data of the pages (ISLP's load_data, without its dependencies)
+          pip install --no-deps ISLP
+
+      # The narrative docs: Jupyter Book 2, notebooks executed.
+      # BASE_URL: the site is served from https://<owner>.github.io/modelmatrix/
+      - name: Make book
+        env:
+          BASE_URL: /${{ github.event.repository.name }}
+        run: |
+          cd docs
+          jupyter-book build --html --execute --ci
+          test -f _build/html/index.html
+
+      # The API reference: Sphinx autodoc, into api/ next to the book
+      - name: Make API reference
+        run: |
+          sphinx-build -b html docs/api docs/_build/html/api
+          test -f docs/_build/html/api/index.html
+
+      # Store the output
+      - name: Upload docs
+        uses: actions/upload-artifact@v7
+        with:
+          name: modelmatrix_docs
+          path: docs/_build/html
+          retention-days: 5
+          if-no-files-found: error
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    # Grant GITHUB_TOKEN the permissions required to make a Pages deployment
+    permissions:
+      pages: write      # to deploy to Pages
+      id-token: write   # to verify the deployment originates from an appropriate source
+
+    environment:
+      name: github-pages
+      url: ${{steps.deployment.outputs.page_url}}
+
+    steps:
+    - uses: actions/download-artifact@v8
+      with:
+        name: modelmatrix_docs
+        path: .
+    - uses: actions/configure-pages@v6
+
+    - uses: actions/upload-pages-artifact@v5
+      with:
+        path: .
+    - id: deployment
+      uses: actions/deploy-pages@v5

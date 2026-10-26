@@ -18,6 +18,10 @@ and `from ISLP.models import ModelSpec` keeps working there.
   `Ordinal`, `poly`, `ns`, `bs`, `pca`, `contrast`, `ordinal`,
   `derived_feature`, `build_columns`); the transforms are in
   `modelmatrix.transforms`.
+- The docs: the guide to `ModelSpec`, the pages on polynomials, splines,
+  PCA and ANOVA, and the comparison with `ColumnTransformer`, patsy and
+  formulaic, from ISLP's docs, as a Jupyter Book 2 site (as glmstar's),
+  with a Sphinx API reference.
 
 For the changes up to ISLP 0.6.0, see
 [ISLP's changelog](https://github.com/intro-stat-learning/ISLP/blob/main/CHANGELOG.md).

@@ -1,0 +1,28 @@
+# Jupyter Book 2 (MyST) configuration
+# See https://jupyterbook.org and https://mystmd.org/guide/frontmatter
+version: 1
+project:
+  title: modelmatrix
+  authors:
+    - name: Jonathan Taylor
+  github: intro-stat-learning/modelmatrix
+  # the API reference (Sphinx autodoc) is built separately into api/ ;
+  # see docs/api/conf.py and .github/workflows/build_docs.yml
+  exclude:
+    - api/**
+  toc:
+    - file: index.md
+    - file: spec.md
+    - title: Features
+      children:
+        - file: poly.md
+        - file: splines.md
+        - file: PCA.md
+    - file: anova.md
+    - file: comparison.md
+    - title: API Reference
+      url: https://intro-stat-learning.github.io/modelmatrix/api/
+site:
+  options:
+    folders: true
+  template: book-theme

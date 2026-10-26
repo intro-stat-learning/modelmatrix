@@ -28,6 +28,8 @@ grid.fit(Wage, Wage['wage'])
 [An Introduction to Statistical Learning with Python](https://www.statlearning.com),
 and `from ISLP.models import ModelSpec` still works there.
 
+Documentation: https://intro-stat-learning.github.io/modelmatrix
+
 ## Install
 
 ```

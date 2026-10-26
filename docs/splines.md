@@ -14,7 +14,7 @@ kernelspec:
 
 # Spline features
 
-The modelling tools included in `ISLP` allow for
+The modelling tools in `modelmatrix` allow for
 construction of spline functions of features.
 
 Force rebuild
@@ -22,7 +22,7 @@ Force rebuild
 ```{code-cell} ipython3
 import numpy as np
 from ISLP import load_data
-from ISLP.models import ModelSpec, ns, bs
+from modelmatrix import ModelSpec, ns, bs
 ```
 
 ```{code-cell} ipython3
@@ -59,7 +59,7 @@ We can compare our polynomials to a similar function in `R`
 ```
 
 We'll recompute these features using `bs` in `R`. The default knot selection of the
-`ISLP` and `R` version are slightly different so we just fix the set of internal knots.
+`modelmatrix` and `R` versions are slightly different so we just fix the set of internal knots.
 
 ```{code-cell} ipython3
 %%R -i Carseats,knots -o R_features

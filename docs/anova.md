@@ -15,8 +15,8 @@ kernelspec:
 # ANOVA using `ModelSpec`
 
 
-In this lab we illustrate how to run create specific ANOVA analyses
-using `ModelSpec`.
+We illustrate how to run specific ANOVA analyses
+using `ModelSpec`, with statsmodels' `anova_lm`.
 
 ```{code-cell} ipython3
 import numpy as np
@@ -26,9 +26,7 @@ from statsmodels.api import OLS
 from statsmodels.stats.anova import anova_lm
 
 from ISLP import load_data
-from ISLP.models import (ModelSpec,
-                         derived_feature,
-                         summarize)
+from modelmatrix import ModelSpec, derived_feature
 ```
 
 We will carry out two simple ANOVA analyses of the `Hitters` data.
@@ -77,15 +75,9 @@ Y = np.array(Hitters['Salary'])
 X = design.transform(Hitters)
 ```
 
-Along with a score we need to specify the search strategy. This is done through the object
-`Stepwise()`  in the `ISLP.models` package. The method `Stepwise.first_peak()`
-runs forward stepwise until any further additions to the model do not result
-in an improvement in the evaluation score. Similarly, the method `Stepwise.fixed_steps()`
-runs a fixed number of steps of stepwise search.
-
 ```{code-cell} ipython3
 M = OLS(Y, X).fit()
-summarize(M)
+M.summary().tables[1]
 ```
 
 We'll first produce the sequential, or Type I ANOVA results. This builds up a model sequentially and compares
@@ -108,8 +100,4 @@ for d in design.build_sequence(Hitters, anova_type='drop'):
 df = pd.concat(dfs)
 df.index = design.names
 df
-```
-
-```{code-cell} ipython3
-
 ```

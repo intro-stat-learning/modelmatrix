@@ -14,7 +14,7 @@ kernelspec:
 
 # Derived features: using PCA on a subset of columns
 
-The modelling tools included in `ISLP` allow for
+The modelling tools in `modelmatrix` allow for
 construction of transformers applied to features.
 
 ```{code-cell} ipython3
@@ -22,7 +22,7 @@ import numpy as np
 from sklearn.decomposition import PCA
 
 from ISLP import load_data
-from ISLP.models import (ModelSpec, 
+from modelmatrix import (ModelSpec, 
                          pca, 
                          Feature, 
                          derived_feature,
@@ -81,8 +81,8 @@ group_pca = pca(['CompPrice', 'Income', 'Advertising', 'Population', 'Price'],
 
 ```{code-cell} ipython3
 pca_design = ModelSpec([group_pca], intercept=False)
-ISLP_features = pca_design.fit_transform(Carseats)
-ISLP_features.columns
+mm_features = pca_design.fit_transform(Carseats)
+mm_features.columns
 ```
 
 ## Direct comparison
@@ -93,5 +93,5 @@ sklearn_features = sklearn_pca.fit_transform(X)
 ```
 
 ```{code-cell} ipython3
-np.linalg.norm(ISLP_features - sklearn_features), np.linalg.norm(ISLP_features - np.asarray(derived_features))
+np.linalg.norm(mm_features - sklearn_features), np.linalg.norm(mm_features - np.asarray(derived_features))
 ```

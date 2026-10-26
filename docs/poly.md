@@ -14,7 +14,7 @@ kernelspec:
 
 # Polynomial features
 
-The modelling tools included in `ISLP` allow for
+The modelling tools in `modelmatrix` allow for
 construction of orthogonal polynomials of features.
 
 Force rebuild
@@ -22,7 +22,7 @@ Force rebuild
 ```{code-cell} ipython3
 import numpy as np
 from ISLP import load_data
-from ISLP.models import ModelSpec, poly
+from modelmatrix import ModelSpec, poly
 ```
 
 ```{code-cell} ipython3
@@ -41,8 +41,8 @@ and fit using the `fit` method.
 
 ```{code-cell} ipython3
 design = ModelSpec([quartic], intercept=False)
-ISLP_features = design.fit_transform(Carseats)
-ISLP_features.columns
+mm_features = design.fit_transform(Carseats)
+mm_features.columns
 ```
 
 ## Compare to `R`
@@ -61,7 +61,7 @@ R_features = poly(Carseats$Population, 4)
 ```
 
 ```{code-cell} ipython3
-np.linalg.norm(ISLP_features - R_features)
+np.linalg.norm(mm_features - R_features)
 ```
 
 ## Underlying model

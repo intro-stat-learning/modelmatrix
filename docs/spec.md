@@ -14,7 +14,7 @@ kernelspec:
 
 # Building design matrices with `ModelSpec`
 
-The `ISLP` package provides a facility to build design
+The `modelmatrix` package provides a facility to build design
 matrices for regression and classification tasks. It provides similar functionality to the formula
 notation of `R` though uses python objects rather than specification through the special formula syntax.
 
@@ -28,8 +28,7 @@ import pandas as pd
 import numpy as np
 
 from ISLP import load_data
-from ISLP.models import (ModelSpec,
-                         summarize,
+from modelmatrix import (ModelSpec,
                          Column,
                          Feature,
                          build_columns,
@@ -66,9 +65,8 @@ X.iloc[:10]
 ```
 
 We note that a column of ones, named `intercept`, has been added: `intercept=True`, as
-statsmodels' models need it. Its default, `True` for now, will change to `False` in ISLP 0.6
-(glmstar's estimators and most scikit-learn estimators fit the intercept themselves), so pass
-`intercept` explicitly: leaving it out gives a `FutureWarning`.
+statsmodels' models need it. The default is `intercept=False`, as most scikit-learn
+estimators (and glmstar's) fit the intercept themselves.
 
 ```{code-cell} ipython3
 MS_no1 = ModelSpec(['ShelveLoc', 'Price'], intercept=False)
@@ -83,7 +81,7 @@ To include this intercept via `ShelveLoc` we can use 3 columns to encode this ca
 `R`, we call this a `Contrast` of the categorical variable.
 
 ```{code-cell} ipython3
-from ISLP.models import contrast
+from modelmatrix import contrast
 shelve = contrast('ShelveLoc', None)
 MS_contr = ModelSpec([shelve, 'Price'], intercept=False)
 MS_contr.fit_transform(Carseats)[:10]
@@ -113,7 +111,7 @@ Let's now fit a simple OLS model with this design.
 X = MS_contr.transform(Carseats)
 Y = Carseats['Sales']
 M_ols = sm.OLS(Y, X).fit()
-summarize(M_ols)
+M_ols.summary().tables[1]
 ```
 
 ## Interactions

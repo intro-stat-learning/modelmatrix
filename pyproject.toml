@@ -27,7 +27,24 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/intro-stat-learning/modelmatrix"
+Documentation = "https://intro-stat-learning.github.io/modelmatrix"
 Changelog = "https://github.com/intro-stat-learning/modelmatrix/blob/main/CHANGELOG.md"
+
+[project.optional-dependencies]
+doc = [
+    # narrative docs (docs/myst.yml); bundles the Jupyter server and kernel
+    "jupyter-book>=2,<3",
+    # API reference (docs/api, Sphinx autodoc)
+    "sphinx",
+    "sphinx-book-theme",
+    # used by the notebooks; their data come from ISLP (installed --no-deps)
+    "statsmodels",
+    "patsy",
+    "formulaic",
+    "polars",
+    "rpy2",
+    "jupytext",
+]
 
 [dependency-groups]
 dev = ["pytest", "pytest-cov", "flake8", "statsmodels", "polars", "pyarrow"]
