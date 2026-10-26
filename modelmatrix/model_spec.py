@@ -7,9 +7,10 @@ formula: *ModelSpec*.
 """
 
 from collections import namedtuple
-from itertools import product
+from itertools import product, combinations
+from dataclasses import dataclass
 from typing import NamedTuple, Any
-from copy import copy
+from copy import copy, deepcopy
 
 import numpy as np, pandas as pd
 import narwhals as nw
@@ -30,6 +31,7 @@ from .columns import (_get_column_info,
                       _categorical_from_df,
                       _check_categories)
 
+from .response import _as_response
 from .transforms import (Poly,
                          BSpline,
                          NaturalSpline,
@@ -304,13 +306,167 @@ class Ordinal(TransformerMixin, BaseEstimator):
         value[missing] = np.nan
         return value
 
+#### the wildcard: all the columns of X but the response, as R's `.`
+
+@dataclass(frozen=True, repr=False)
+class Wildcard:
+
+    """
+    A term standing for every column of `X` but those of the response,
+    as `.` in R's formulae: `ModelSpec([wildcard], response='y')` is
+    `y ~ .`. It is expanded when the `ModelSpec` is fit, into the terms
+    of `terms_`, and can also be
+
+    - a part of an interaction: `(wildcard, 'g')` is R's `.:g`;
+    - a variable of a feature: `pca(wildcard, n_components=3)`.
+
+    Columns that are terms themselves are not repeated, as in R's
+    `y ~ x + .`.
+
+    Parameters
+    ----------
+
+    pow : int, default=1
+        Also the interactions of up to `pow` columns: `wildcard(pow=2)`
+        is R's `.^2`. Only as a term.
+
+    exclude : column identifier, or sequence of them (optional)
+        Columns left out: `wildcard(exclude='x')` is R's `. - x`.
+    """
+
+    pow: int = 1
+    exclude: tuple = ()
+
+    def __post_init__(self):
+        if (not isinstance(self.pow, (int, np.integer)) or isinstance(self.pow, bool)
+            or self.pow < 1):
+            raise ValueError(f'pow should be a positive integer, got {self.pow!r}')
+        exclude = self.exclude
+        if isinstance(exclude, (str, int, np.integer)) or not np.iterable(exclude):
+            exclude = (exclude,)
+        object.__setattr__(self, 'exclude', tuple(exclude))
+
+    def __call__(self, pow=1, exclude=()):
+        return Wildcard(pow=pow, exclude=exclude)
+
+    def __repr__(self):
+        name = '.' if self.pow == 1 else f'.^{self.pow}'
+        return ' - '.join([name] + [str(c) for c in self.exclude])
+
+    @property
+    def name(self):
+        return repr(self)
+
+    def _columns(self, columns):
+        return [c for c in columns if c not in self.exclude]
+
+
+wildcard = Wildcard()
+
+
+def _has_wildcard(term):
+    if isinstance(term, Wildcard):
+        return True
+    if isinstance(term, Feature):
+        return any(_has_wildcard(v) for v in term.variables)
+    if isinstance(term, tuple) and not isinstance(term, Column):
+        return any(_has_wildcard(v) for v in term)
+    return False
+
+
+def _same_term(a, b):
+    # an interaction is the same in any order
+    if (isinstance(a, tuple) and isinstance(b, tuple) and
+        not isinstance(a, (Feature, Column)) and not isinstance(b, (Feature, Column))):
+        return len(a) == len(b) and all(any(_same_term(x, y) for y in b) for x in a)
+    if isinstance(a, tuple) or isinstance(b, tuple):   # Features and Columns are tuples
+        return type(a) is type(b) and a == b
+    try:   # column identifiers, e.g. 1 and np.int64(1)
+        return bool(a == b)
+    except (TypeError, ValueError):
+        return False
+
+
+def _expand_feature(feature, columns):
+    # a Feature with each wildcard among its variables (recursively)
+    # replaced by the columns it stands for
+    variables = []
+    for v in feature.variables:
+        if isinstance(v, Wildcard):
+            if v.pow != 1:
+                raise ValueError(f'{v!r} cannot be a variable of the feature {feature.name!r}: '
+                                 'its interactions are terms, use it as a term')
+            variables.extend(c for c in v._columns(columns)
+                             if not any(_same_term(c, u) for u in feature.variables))
+        elif isinstance(v, Feature) and _has_wildcard(v):
+            variables.append(_expand_feature(v, columns))
+        else:
+            variables.append(v)
+    return feature._replace(variables=tuple(variables))
+
+
+def _expand_term(term, columns):
+    # the terms a term with a wildcard stands for
+    if isinstance(term, Wildcard):
+        cols = term._columns(columns)
+        terms = list(cols)
+        for k in range(2, term.pow + 1):
+            terms.extend(combinations(cols, k))
+        return terms
+    if isinstance(term, Feature):
+        return [_expand_feature(term, columns)]
+    # an interaction: one for each column a wildcard among its parts stands for
+    parts = []
+    for part in term:
+        if isinstance(part, Wildcard):
+            if part.pow != 1:
+                raise ValueError(f'{part!r} cannot be a part of an interaction; '
+                                 'use it as a term')
+            parts.append(part._columns(columns))
+        elif isinstance(part, Feature) and _has_wildcard(part):
+            parts.append([_expand_feature(part, columns)])
+        else:
+            parts.append([part])
+    terms = []
+    for combo in product(*parts):
+        if any(_same_term(a, b) for i, a in enumerate(combo) for b in combo[i+1:]):
+            continue   # a column interacted with itself
+        terms.append(tuple(combo))
+    return terms
+
+
+def _expand_terms(terms, columns):
+    """
+    `terms` with each wildcard expanded, `columns` being the columns
+    it stands for. A term made by a wildcard is dropped if it is
+    another term, or was already made.
+    """
+    explicit = [t for t in terms if not _has_wildcard(t)]
+    expanded = []
+    for term in terms:
+        if not _has_wildcard(term):
+            expanded.append(term)
+            continue
+        for new in _expand_term(term, columns):
+            if not any(_same_term(new, t) for t in explicit + expanded):
+                expanded.append(new)
+    return expanded
+
+
+class _AllColumns(Exception):
+    pass
+
+
 def _term_columns(terms):
     """
     The columns of X that `terms` (column identifiers, Columns,
-    Features and tuples of these) are built from.
+    Features and tuples of these) are built from, or None if a
+    wildcard stands for all of them.
     """
     found = set()
     def visit(t):
+        if isinstance(t, Wildcard):
+            raise _AllColumns
         if isinstance(t, Feature):
             for v in t.variables:
                 visit(v)
@@ -324,8 +480,11 @@ def _term_columns(terms):
                 found.add(t)
             except TypeError:   # not a column identifier: an error later
                 pass
-    for t in terms:
-        visit(t)
+    try:
+        for t in terms:
+            visit(t)
+    except _AllColumns:
+        return None
     return found
 
 def _native_columns(X):
@@ -412,7 +571,8 @@ class ModelSpec(TransformerMixin, BaseEstimator):
         Sequence of sets whose
         elements are columns of *X* when fit.
         For :py:class:`pd.DataFrame` these can be column
-        names.
+        names. :py:data:`wildcard` stands for every column of *X*
+        but the response, as R's `.` (see :py:class:`Wildcard`).
 
     intercept : bool, default=False
 
@@ -453,6 +613,14 @@ class ModelSpec(TransformerMixin, BaseEstimator):
         For an encoder of a single term, see :py:func:`contrast`
         and :py:func:`ordinal`.
 
+    response : column identifier, list of them, or Response (optional)
+
+        The response of the model, built by :py:meth:`build_response`:
+        a column of *X*, a list of columns, or a :py:class:`Surv`,
+        :py:class:`Binomial` or :py:class:`Multinomial`. Its columns are
+        not in :py:data:`wildcard`, and cannot be in a term.
+        `ModelSpec([wildcard], response='y')` is R's `y ~ .`.
+
     sparse_output : bool (optional)
 
         If True, the model matrix is a `scipy.sparse.csr_matrix`.
@@ -469,6 +637,7 @@ class ModelSpec(TransformerMixin, BaseEstimator):
                  intercept=False,
                  categorical_features=None,
                  categorical_encoders=None,
+                 response=None,
                  sparse_output=False
                  ):
 
@@ -476,6 +645,7 @@ class ModelSpec(TransformerMixin, BaseEstimator):
         self.terms = terms
         self.categorical_features = categorical_features
         self.categorical_encoders = categorical_encoders
+        self.response = response
         self.sparse_output = sparse_output
 
     def _check_X(self, X, reset):
@@ -601,16 +771,29 @@ class ModelSpec(TransformerMixin, BaseEstimator):
             converted to `pandas`; `transform` then returns the model matrix
             in the backend of its input.
 
-        y : None
-            Ignored. This parameter exists only for compatibility with
-            :py:class:`sklearn.pipeline.Pipeline`.
+        y : array-like (optional)
+            Not used to fit, but if both *X* and *y* are pandas objects,
+            their indices must agree. This parameter exists for
+            compatibility with :py:class:`sklearn.pipeline.Pipeline`;
+            see :py:meth:`build_response` for a response from *X*.
 
         """
         
         if not isinstance(self.sparse_output, (bool, np.bool_)):
             raise ValueError(f'sparse_output should be True or False, got {self.sparse_output!r}')
+        if (isinstance(X, (pd.DataFrame, pd.Series)) and
+            isinstance(y, (pd.DataFrame, pd.Series)) and
+            not X.index.equals(y.index)):
+            raise ValueError('the indices of X and y do not agree: '
+                             'y should be the response of the rows of X')
+        # a copy of the response is fit, so that `self.response` is not modified
+        self.response_ = deepcopy(_as_response(self.response))
+        response_columns = () if self.response_ is None else self.response_.columns
         native_columns = _native_columns(X)
-        X, _ = _from_native(X, _term_columns(self.terms))
+        columns = _term_columns(self.terms)
+        if columns is not None:
+            columns |= set(response_columns)
+        X, _ = _from_native(X, columns)
         X = self._check_X(X, reset=True)
         if native_columns is not None:   # describe all of X, not only the columns used
             self.n_features_in_ = len(native_columns)
@@ -646,6 +829,20 @@ class ModelSpec(TransformerMixin, BaseEstimator):
                                         bool)
             self.columns_ = np.arange(X.shape[1])
 
+        if self.response_ is not None:
+            self.response_.fit(X)
+
+        # the terms, with each wildcard expanded: the columns of X but
+        # those of the response
+        self.expanded_terms_ = _expand_terms(list(self.terms),
+                                             [c.item() if isinstance(c, np.integer) else c
+                                              for c in self.columns_
+                                              if c not in response_columns])
+        used = _term_columns(self.expanded_terms_) & set(response_columns)
+        if used:
+            raise ValueError(f'the response columns {sorted(used, key=str)} are used '
+                             'in the terms: a response cannot be a term')
+
         self.features_ = {}
         self.encoders_ = {}
 
@@ -675,7 +872,7 @@ class ModelSpec(TransformerMixin, BaseEstimator):
         # fit does not build the model matrix
         X_head = X.iloc[:2] if isinstance(X, pd.DataFrame) else X[:2]
 
-        for term in self.terms:
+        for term in self.expanded_terms_:
             if isinstance(term, Feature):
                 term_ = _clone_term(term, clone_memo)
                 self.features_[term] = term_
@@ -738,14 +935,14 @@ class ModelSpec(TransformerMixin, BaseEstimator):
 
         self.column_names_ = {}
         self.column_map_ = {}
-        self.terms_ = [self.features_[t] for t in self.terms]
+        self.terms_ = [self.features_[t] for t in self.expanded_terms_]
         
         idx = 0
         if self._include_intercept():
             self.column_map_['intercept'] = slice(0, 1)
             idx += 1 # intercept will be first column
         
-        for term, term_ in zip(self.terms, self.terms_):
+        for term, term_ in zip(self.expanded_terms_, self.terms_):
             term_df, term_names = build_columns(self.column_info_,
                                                 X_head,
                                                 term_,
@@ -804,13 +1001,36 @@ class ModelSpec(TransformerMixin, BaseEstimator):
         """
         check_is_fitted(self)
         names = ['intercept'] if self._include_intercept() else []
-        for term in self.terms:
+        for term in self.expanded_terms_:
             names.extend(str(n) for n in self.column_names_[term])
         if not names:   # build_model returns a 'zero' column
             names = ['zero']
         return np.asarray(names, dtype=object)
 
     # ModelSpec specific methods
+
+    def build_response(self, X):
+        """
+        Build the response on X after fitting.
+
+        Parameters
+        ----------
+        X : array-like
+            X holding the columns of the response.
+
+        Returns
+        -------
+        y : pd.Series, pd.DataFrame or np.ndarray
+            The response, e.g. for `fit(X, y)` of an estimator: a
+            :py:class:`pd.Series` or :py:class:`pd.DataFrame` for
+            a dataframe *X*, an :py:class:`np.ndarray` for an array.
+        """
+        check_is_fitted(self)
+        if self.response_ is None:
+            raise ValueError('this ModelSpec has no response: give one with ModelSpec(..., response=...)')
+        X, _ = _from_native(X, set(self.response_.columns))
+        X = self._check_X(X, reset=False)
+        return self.response_.transform(X)
 
     @property
     def names(self, help='Name for each term in model specification.'):
@@ -1299,10 +1519,12 @@ def derived_feature(variables, encoder=None, name=None, use_transform=True):
     Parameters
     ----------
 
-    variables : [column identifier, Column, Feature]
+    variables : [column identifier, Column, Feature, Wildcard]
         Variables to apply transform to. Could be
         column identifiers or variables: all columns
-        will be stacked before encoding.
+        will be stacked before encoding. A :py:data:`wildcard`
+        (alone, or in the sequence) stands for the columns of *X*
+        but the response.
 
     name : str (optional)
         Defaults to `str(encoder)`.
@@ -1318,6 +1540,8 @@ def derived_feature(variables, encoder=None, name=None, use_transform=True):
 
     if name is None:
         name = str(encoder)
+    if isinstance(variables, Wildcard):
+        variables = [variables]
     var = Feature(tuple([v for v in variables]),
                    name,
                    encoder,
@@ -1551,19 +1775,27 @@ def bs(col, intercept=False, name=None, **spline_args):
                             name=name,
                             encoder=encoder)._replace(spec=spec)
 
-def pca(variables, name, scale=False, **pca_args):
+def pca(variables, name=None, scale=False, **pca_args):
     """
     Create PCA encoding of features
     from a sequence of variables.
     
     Additional args and *pca_args*
-    are passed to :py:class:`modelmatrix.transforms.PCA`.
+    are passed to :py:class:`sklearn.decomposition.PCA`.
 
     Parameters
     ----------
 
-    variables : [column identifier, Column or Feature]
-        Sequence whose columns will be encoded by PCA.
+    variables : [column identifier, Column, Feature or Wildcard]
+        Sequence whose columns will be encoded by PCA, or
+        :py:data:`wildcard` for the columns of *X* but the response:
+        `pca(wildcard, n_components=3)`.
+
+    name : str (optional)
+        Defaults to one derived from the variables.
+
+    scale : bool, default=False
+        Standardize the columns before the PCA?
 
     Returns
     -------
@@ -1579,6 +1811,11 @@ def pca(variables, name, scale=False, **pca_args):
                                 with_std=True)
         encoder = make_pipeline(scaler, encoder)
 
+    if name is None:
+        if isinstance(variables, Wildcard):
+            name = repr(variables)
+        else:
+            name = ', '.join(getattr(v, 'name', None) or str(v) for v in variables)
     _args = _argstring(**pca_args)
 
     if _args:
@@ -1624,7 +1861,7 @@ def _rebuild(feature, **changes):
     helper, args, kwargs = feature.spec
     kwargs = dict(kwargs)
     kwargs.update(changes)
-    if helper == 'pca':
+    if helper == 'pca' and isinstance(args[0], tuple):
         args = (list(args[0]),) + tuple(args[1:])
     return {'poly': poly, 'ns': ns, 'bs': bs, 'pca': pca}[helper](*args, **kwargs)
 

@@ -18,6 +18,7 @@ project:
         - file: poly.md
         - file: splines.md
         - file: PCA.md
+    - file: responses.md
     - file: anova.md
     - file: comparison.md
     - title: API Reference
