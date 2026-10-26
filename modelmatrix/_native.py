@@ -12,6 +12,9 @@ from scipy import sparse as sp_sparse
 
 
 def _series_to_native(S, backend):
+    return _series_to_nw(S, backend).to_native()
+
+def _series_to_nw(S, backend):
     # a categorical is an Enum, if the backend has one, of its
     # categories as strings
     values, dtype = S.to_numpy(), None
@@ -19,9 +22,9 @@ def _series_to_native(S, backend):
         values = np.asarray([None if pd.isna(v) else str(v) for v in S], dtype=object)
         dtype = nw.Enum([str(c) for c in S.cat.categories])
     try:
-        return nw.new_series(str(S.name), values, dtype=dtype, backend=backend).to_native()
+        return nw.new_series(str(S.name), values, dtype=dtype, backend=backend)
     except NotImplementedError:   # e.g. no Enum in pyarrow
-        return nw.new_series(str(S.name), values, backend=backend).to_native()
+        return nw.new_series(str(S.name), values, backend=backend)
 
 def _from_native(X, columns=None):
     """
@@ -62,6 +65,9 @@ def _from_native(X, columns=None):
         if duplicated:
             raise ValueError(f'the model matrix has duplicated column names {duplicated}, '
                              'which this dataframe backend cannot hold')
+        if any(isinstance(t, pd.CategoricalDtype) for t in D.dtypes):   # e.g. strata
+            return nw.from_dict({str(c): _series_to_nw(D[c].rename(str(c)), backend)
+                                 for c in D.columns}).to_native()
         return nw.from_dict({str(c): D[c].to_numpy() for c in D.columns},
                             backend=backend).to_native()
 

@@ -68,15 +68,17 @@ def test_index_of_y(Carseats):
 
 def test_surv(S):
     y = Surv('time', 'status').fit_transform(S)
-    pd.testing.assert_frame_equal(y, S[['time', 'status']].astype(float))
+    # named by role, whatever their names in the data
+    pd.testing.assert_frame_equal(y, S[['time', 'status']].astype(float)
+                                  .set_axis(['stop', 'status'], axis=1))
     y3 = Surv('start', 'time', 'status').fit_transform(S)
-    assert list(y3.columns) == ['start', 'time', 'status']
+    assert list(y3.columns) == ['start', 'stop', 'status']
     y_kw = Surv(stop='time', status='status', start='start').fit_transform(S)
     pd.testing.assert_frame_equal(y3, y_kw)
     assert repr(Surv('start', 'time', 'status')) == "Surv('start', 'time', 'status')"
     # a boolean status
     yb = Surv('time', 'flag').fit_transform(S)
-    np.testing.assert_array_equal(yb['flag'], S['flag'].astype(float))
+    np.testing.assert_array_equal(yb['status'], S['flag'].astype(float))
 
 
 def test_surv_matches_statsmodels_PHReg(S):
@@ -84,7 +86,7 @@ def test_surv_matches_statsmodels_PHReg(S):
     y = response.fit_transform(S)
     X = MS([wildcard(exclude=[response, 'start', 'cases', 'size', 'flag', 'kind'])]).fit_transform(S)
     assert list(X.columns) == ['x']
-    fit = sm.PHReg(y['time'], X, status=y['status']).fit()
+    fit = sm.PHReg(y['stop'], X, status=y['status']).fit()
     ref = sm.PHReg(S['time'], S[['x']], status=S['status']).fit()
     np.testing.assert_allclose(fit.params, ref.params)
 

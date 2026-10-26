@@ -112,9 +112,10 @@ design.
 ### Survival responses: `Surv`
 
 `Surv(time, status)` is R's survival response, and `Surv(start, stop,
-status)` that of (start, stop] intervals. The response is a
-`pd.DataFrame` with these columns, named as in the data, as glmstar's
-`CoxFamily(event_id=..., status_id=..., start_id=...)` or lifelines take it.
+status)` that of (start, stop] intervals. The response is a dataframe
+whose columns are named by their role, whatever their names in the
+data: `stop` (the times), `status` and, if given, `start`, as R's
+`Surv` and lifelines' `CoxTimeVaryingFitter` name them.
 
 ```{code-cell} ipython3
 BrainCancer = load_data('BrainCancer').dropna()
@@ -125,7 +126,7 @@ y.iloc[:5]
 ```
 
 ```{code-cell} ipython3
-sm.PHReg(y['time'], X, status=y['status']).fit().params
+sm.PHReg(y['stop'], X, status=y['status']).fit().params
 ```
 
 ### Binomial responses
@@ -166,6 +167,45 @@ of counts for each class.
 ```{code-cell} ipython3
 Multinomial('ShelveLoc', output='onehot').fit_transform(Carseats).iloc[:5]
 ```
+
+### Offsets, weights and strata: `Outcome`
+
+`Outcome` puts the other columns a model takes with its response next
+to it, each named by its keyword: an offset, weights, the strata of a
+Cox model, or any other. A column is taken as it is (a categorical keeps
+its labels), and a feature of a single column is fit as a term of a
+`ModelSpec`, e.g. R's `offset(log(exposure))`:
+
+```{code-cell} ipython3
+from sklearn.preprocessing import FunctionTransformer
+from modelmatrix import Outcome, derived_feature
+
+rng = np.random.default_rng(1)
+P = pd.DataFrame({'x': rng.standard_normal(100), 'exposure': rng.uniform(1, 5, 100)})
+P['claims'] = rng.poisson(P['exposure'] * np.exp(0.3 * P['x']))
+
+log_exposure = derived_feature(['exposure'], encoder=FunctionTransformer(np.log),
+                               name='log(exposure)')
+outcome = Outcome('claims', offset=log_exposure)
+y = outcome.fit_transform(P)
+X = MS([wildcard(exclude=outcome)], intercept=True).fit_transform(P)   # leaves out exposure too
+sm.GLM(y['claims'], X, family=sm.families.Poisson(), offset=y['offset']).fit().params
+```
+
+As the columns are named by their role, an estimator can find them by
+name, e.g. a stratified Cox model with an offset:
+
+```{code-cell} ipython3
+BrainCancer['O'] = 0.1
+outcome = Outcome(Surv('time', 'status'), offset='O', strata='sex')
+y = outcome.fit_transform(BrainCancer)
+y.iloc[:5]
+```
+
+The offset of new data, whose response is not known, is
+`outcome.transform(new, response=False)`. With a `Binomial` of
+`output='proportion'`, the number of trials is the column `weight`
+(times the weights given as `weight=`), as R's weights of a proportion.
 
 ## Missing values
 
