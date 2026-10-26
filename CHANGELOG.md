@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.2.0 (2026-10-26)
+
 ### New features
 
 - **Responses**, built from the same data as the design, as a
