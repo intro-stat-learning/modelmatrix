@@ -6,6 +6,7 @@ fixed the test will XPASS and fail the suite, signalling that the
 marker should be removed.
 """
 import pickle
+import warnings
 from copy import deepcopy
 
 import numpy as np, pandas as pd
@@ -32,11 +33,6 @@ from modelmatrix.model_spec import Contrast, Ordinal
 from modelmatrix.transforms import Poly, BSpline, NaturalSpline
 
 bug = lambda reason: pytest.mark.xfail(strict=True, reason=reason)
-
-# ModelSpec warns at fit that it moves to its own package in ISLP 0.7; these
-# tests use its default intercept (True), which then becomes False, when
-# those relying on it must change
-pytestmark = pytest.mark.filterwarnings("ignore:ModelSpec will move:FutureWarning")
 
 @pytest.fixture
 def D():
@@ -155,7 +151,7 @@ def test_transform_ignores_column_order(D):
     np.testing.assert_allclose(M.transform(D), M.transform(D[D.columns[::-1]]))
 
 def test_unused_columns_not_needed_at_transform(D):
-    M = MS(['x']).fit(D)
+    M = MS(['x'], intercept=True).fit(D)
     assert M.transform(D[['x']]).shape == (D.shape[0], 2)
 
 def test_pickle_roundtrip(D):
@@ -267,7 +263,7 @@ def test_cv_folds_refit_encoders(D):
 
 def test_build_submodel_accepts_original_terms(D):
     terms = _rich_terms()
-    M = MS(terms).fit(D)
+    M = MS(terms, intercept=True).fit(D)
     X = M.transform(D)
     sub = M.build_submodel(D, terms[1:3])
     _assert_same_design(sub, X[['intercept'] + M.column_names_[terms[1]] + M.column_names_[terms[2]]])
@@ -374,8 +370,18 @@ def test_no_attributes_set_in_init():
     M = MS(['x'], categorical_encoders={'categorical': Contrast(method=None)})
     assert set(vars(M)) == set(M.get_params())
 
+def test_intercept_default_False(D):
+    # no column of ones, and no warning, unless intercept=True
+    with warnings.catch_warnings():
+        warnings.simplefilter('error')
+        X = MS(['x', 'g']).fit_transform(D)
+    assert list(X.columns) == ['x', 'g[b]', 'g[c]']
+    X1 = MS(['x', 'g'], intercept=True).fit_transform(D)
+    assert list(X1.columns) == ['intercept', 'x', 'g[b]', 'g[c]']
+    np.testing.assert_allclose(X1['intercept'], 1)
+
 def test_default_params():
-    assert MS().get_params() == {'terms': (), 'intercept': None,
+    assert MS().get_params() == {'terms': (), 'intercept': False,
                                  'categorical_features': None,
                                  'categorical_encoders': None,
                                  'sparse_output': False}
@@ -392,7 +398,7 @@ def test_unfitted_raises_notfitted(D):
             method()
 
 def test_set_params_categorical_encoders(D):
-    M = MS(['g']).set_params(categorical_encoders={'categorical': Contrast(method=None)})
+    M = MS(['g'], intercept=True).set_params(categorical_encoders={'categorical': Contrast(method=None)})
     assert list(M.fit_transform(D).columns) == ['intercept', 'g[a]', 'g[b]', 'g[c]']
     # and a per-column encoder
     M.set_params(categorical_encoders={'g': Contrast(method='sum')})
@@ -410,7 +416,7 @@ def test_gridsearch_over_categorical_encoders(D):
     assert len(G.cv_results_['params']) == 2
 
 def test_get_feature_names_out(D):
-    M = MS(['x', 'g']).fit(D)
+    M = MS(['x', 'g'], intercept=True).fit(D)
     assert list(M.get_feature_names_out()) == ['intercept', 'x', 'g[b]', 'g[c]']
 
 @pytest.mark.parametrize('intercept', [True, False])
@@ -432,10 +438,10 @@ def test_n_features_in(D):
 
 def test_set_output_pandas_on_ndarray(D):
     A = D[['x', 'z']].values
-    X = MS([0, poly(1, 2)]).set_output(transform='pandas').fit_transform(A)
+    X = MS([0, poly(1, 2)], intercept=True).set_output(transform='pandas').fit_transform(A)
     assert isinstance(X, pd.DataFrame)
     assert list(X.columns) == ['intercept', '0', 'poly(1, degree=2)[0]', 'poly(1, degree=2)[1]']
-    np.testing.assert_allclose(X, MS([0, poly(1, 2)]).fit_transform(A))
+    np.testing.assert_allclose(X, MS([0, poly(1, 2)], intercept=True).fit_transform(A))
 
 def test_pipeline_set_output(D):
     pipe = make_pipeline(MS(['x', 'g', ns('z', df=3)]), LinearRegression()).set_output(transform='pandas')
@@ -534,7 +540,7 @@ def test_transform_single_value(klass, args):
 def test_ndarray_categorical_features():
     rng = np.random.default_rng(1)
     A = np.column_stack([rng.standard_normal(30), rng.choice([0, 1, 2], 30)])
-    assert MS([0, 1], categorical_features=[1]).fit_transform(A).shape == (30, 4)
+    assert MS([0, 1], categorical_features=[1], intercept=True).fit_transform(A).shape == (30, 4)
 
 def test_series_input(D):
     _assert_same_design(MS(['x']).fit_transform(D.x), MS(['x']).fit_transform(D[['x']]))
@@ -558,7 +564,7 @@ def test_unused_category_level(D, method):
 
 def test_train_missing_level(D):
     Dt = D[D.g != 'c']           # categories still a, b, c
-    M = MS(['g']).fit(Dt)
+    M = MS(['g'], intercept=True).fit(Dt)
     assert list(M.transform(Dt).columns) == ['intercept', 'g[b]']
     with pytest.raises(ValueError, match="unknown categories \\['c'\\]"):
         M.transform(D)           # as in R, a new level cannot be predicted
@@ -570,7 +576,7 @@ def test_cv_fold_missing_level(D):
     g = Dr.g.astype(object)
     g.iloc[:5] = 'rare'
     Dr['g'] = pd.Categorical(g, categories=['a', 'b', 'c', 'rare'])
-    pipe = make_pipeline(MS(['x', 'g']), LinearRegression())
+    pipe = make_pipeline(MS(['x', 'g'], intercept=True), LinearRegression())
     from sklearn.model_selection import KFold
     for train, _ in KFold(4).split(Dr):
         pipe.fit(Dr.iloc[train], Dr.z.iloc[train])
@@ -615,7 +621,7 @@ def test_contrast_from_column(D):
 def test_contrast_int_drop_level(D, drop_level):
     k = np.tile([1, 2, 3], D.shape[0] // 3 + 1)[:D.shape[0]]
     for kk in [k, pd.Categorical(k)]:
-        X = MS([contrast('k', 'drop', drop_level)]).fit_transform(D.assign(k=kk))
+        X = MS([contrast('k', 'drop', drop_level)], intercept=True).fit_transform(D.assign(k=kk))
         assert list(X.columns) == ['intercept', 'k[1]', 'k[3]']
         np.testing.assert_allclose(X.iloc[:, 1:], _indicators(k, [1, 3]))
 
@@ -717,9 +723,9 @@ def test_wage_education_ordinal_vs_contrast():
     # Wage.education is ordered: contrasts by default, a linear score with ordinal()
     W = load_data('Wage')
     assert W.education.cat.ordered
-    X = MS(['education']).fit_transform(W)
+    X = MS(['education'], intercept=True).fit_transform(W)
     assert X.shape[1] == 1 + W.education.cat.categories.shape[0] - 1
-    Xo = MS([ordinal('education')]).fit_transform(W)
+    Xo = MS([ordinal('education')], intercept=True).fit_transform(W)
     assert list(Xo.columns) == ['intercept', 'ordinal(education)']
     np.testing.assert_allclose(Xo['ordinal(education)'], W.education.cat.codes.astype(float))
 
@@ -847,14 +853,14 @@ def test_polars_enum_and_categorical_ordinal():
 def test_polars_series_string_lazy_duplicates(D):
     pl = pytest.importorskip('polars')
     P = pl.from_pandas(D[['x', 'z']])
-    X = MS(['x']).fit_transform(P['x'])
+    X = MS(['x'], intercept=True).fit_transform(P['x'])
     assert isinstance(X, pl.DataFrame) and X.columns == ['intercept', 'x']
     with pytest.raises(ValueError, match="column 's' is not numeric"):
-        MS(['s']).fit(pl.DataFrame({'s': ['u', 'v']}))
+        MS(['s'], intercept=True).fit(pl.DataFrame({'s': ['u', 'v']}))
     with pytest.raises(TypeError, match='Lazy frames'):
-        MS(['x']).fit(P.lazy())
+        MS(['x'], intercept=True).fit(P.lazy())
     with pytest.raises(ValueError, match='duplicated column names'):
-        MS(['x', 'x']).fit_transform(P)
+        MS(['x', 'x'], intercept=True).fit_transform(P)
 
 def test_polars_set_output_and_pipeline(D):
     pl = pytest.importorskip('polars')
@@ -872,7 +878,7 @@ def test_build_sequence_bool_column(D):
     # boolean columns are float in build_sequence, as in transform,
     # so that an ANOVA over the sequence can be fit
     from statsmodels.stats.anova import anova_lm
-    M = MS(['x', 'b']).fit(D)
+    M = MS(['x', 'b'], intercept=True).fit(D)
     seq = list(M.build_sequence(D))
     assert all((X.dtypes == float).all() for X in seq)
     _assert_same_design(seq[-1], M.transform(D))
@@ -933,7 +939,7 @@ def test_sparse_many_levels_memory():
                       'id': pd.Categorical(rng.integers(0, K, n))})
     for terms in (['id', 'x'], [('id', 'x')]):
         tracemalloc.start()
-        X = MS(terms, sparse_output=True).fit_transform(B)
+        X = MS(terms, sparse_output=True, intercept=True).fit_transform(B)
         peak = tracemalloc.get_traced_memory()[1]
         tracemalloc.stop()
         assert X.shape[1] >= K - 1 and X.nnz <= 3 * n

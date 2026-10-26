@@ -10,7 +10,6 @@ from collections import namedtuple
 from itertools import product
 from typing import NamedTuple, Any
 from copy import copy
-import warnings
 
 import numpy as np, pandas as pd
 import narwhals as nw
@@ -37,24 +36,6 @@ from .transforms import (Poly,
                          Interaction)
 
 DOCACHE = False
-
-# ModelSpec will move to its own package: a FutureWarning at fit, with
-# advice on `intercept` if the spec relies on its default
-_MOVE_WARNING = (
-    "ModelSpec will move to its own package in ISLP 0.7. "
-    "`from ISLP.models import ModelSpec` (and the other tools of ISLP.models "
-    "that build model matrices) will keep working, but other import paths, "
-    "such as ISLP.models.model_spec, may not, and `intercept` will then "
-    "default to False.")
-_INTERCEPT_WARNING = (
-    " This ModelSpec relies on the default of `intercept`, now True, which adds "
-    "a column of ones named 'intercept' to the design: only statsmodels' models "
-    "(OLS, GLM, ...) need it, as glmstar's estimators and most scikit-learn "
-    "estimators fit the intercept themselves. Pass intercept=True to keep it "
-    "(e.g. for statsmodels), or intercept=False to drop it.")
-_SILENCE_MOVE_WARNING = (
-    " To silence this warning: "
-    "warnings.filterwarnings('ignore', message='ModelSpec will move').")
 
 class Feature(NamedTuple):
 
@@ -433,16 +414,12 @@ class ModelSpec(TransformerMixin, BaseEstimator):
         For :py:class:`pd.DataFrame` these can be column
         names.
 
-    intercept : bool or None (optional)
+    intercept : bool, default=False
 
         Include a column of ones named `'intercept'` as the first
         column of the design? Pass `True` for statsmodels' models
-        (`OLS`, `GLM`, ...), which need the column, and `False` for
-        estimators that fit the intercept themselves (glmstar's
-        estimators and most scikit-learn estimators). The default,
-        `None`, behaves as `True` but issues a `FutureWarning` at
-        *fit*: the default will change to `False` in ISLP 0.7, when
-        `ModelSpec` moves to its own package.
+        (`OLS`, `GLM`, ...), which need the column; most scikit-learn
+        estimators, and glmstar's, fit the intercept themselves.
 
     categorical_features : array-like of {bool, int} of shape (n_features) 
             or shape (n_categorical_features,), default=None.
@@ -489,7 +466,7 @@ class ModelSpec(TransformerMixin, BaseEstimator):
 
     def __init__(self,
                  terms=(),
-                 intercept=None,
+                 intercept=False,
                  categorical_features=None,
                  categorical_encoders=None,
                  sparse_output=False
@@ -606,8 +583,7 @@ class ModelSpec(TransformerMixin, BaseEstimator):
         return {'allow_nan': True}
 
     def _include_intercept(self):
-        # `intercept=None`, the deprecated default, behaves as True
-        return self.intercept is None or bool(self.intercept)
+        return bool(self.intercept)
 
     def fit(self, X, y=None):
 
@@ -631,11 +607,6 @@ class ModelSpec(TransformerMixin, BaseEstimator):
 
         """
         
-        # warn at fit, not in __init__, as sklearn's clone re-runs __init__
-        warnings.warn(_MOVE_WARNING + (_INTERCEPT_WARNING if self.intercept is None
-                                       else _SILENCE_MOVE_WARNING),
-                      FutureWarning, stacklevel=2)
-
         if not isinstance(self.sparse_output, (bool, np.bool_)):
             raise ValueError(f'sparse_output should be True or False, got {self.sparse_output!r}')
         native_columns = _native_columns(X)
