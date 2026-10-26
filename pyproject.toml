@@ -26,8 +26,8 @@ classifiers = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/intro-stat-learning/modelspec"
-Changelog = "https://github.com/intro-stat-learning/modelspec/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/intro-stat-learning/modelmatrix"
+Changelog = "https://github.com/intro-stat-learning/modelmatrix/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = ["pytest", "pytest-cov", "flake8", "statsmodels", "polars", "pyarrow"]
