@@ -148,6 +148,10 @@ def test_ndarray(D):
     assert spec.expanded_terms_ == [1, 2]
     np.testing.assert_allclose(spec.transform(A), A[:, 1:])
     np.testing.assert_allclose(spec.build_response(A), A[:, 0])
+    # an explicit column is not repeated
+    spec = MS([2, wildcard], response=0).fit(A)
+    assert spec.expanded_terms_ == [2, 1]
+    assert all(type(t) is int for t in spec.expanded_terms_)
 
 
 def test_polars(D):

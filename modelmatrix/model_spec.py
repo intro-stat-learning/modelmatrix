@@ -379,9 +379,12 @@ def _same_term(a, b):
     if (isinstance(a, tuple) and isinstance(b, tuple) and
         not isinstance(a, (Feature, Column)) and not isinstance(b, (Feature, Column))):
         return len(a) == len(b) and all(any(_same_term(x, y) for y in b) for x in a)
-    if type(a) is not type(b):
+    if isinstance(a, tuple) or isinstance(b, tuple):   # Features and Columns are tuples
+        return type(a) is type(b) and a == b
+    try:   # column identifiers, e.g. 1 and np.int64(1)
+        return bool(a == b)
+    except (TypeError, ValueError):
         return False
-    return a == b
 
 
 def _expand_feature(feature, columns):
@@ -832,7 +835,8 @@ class ModelSpec(TransformerMixin, BaseEstimator):
         # the terms, with each wildcard expanded: the columns of X but
         # those of the response
         self.expanded_terms_ = _expand_terms(list(self.terms),
-                                             [c for c in self.columns_
+                                             [c.item() if isinstance(c, np.integer) else c
+                                              for c in self.columns_
                                               if c not in response_columns])
         used = _term_columns(self.expanded_terms_) & set(response_columns)
         if used:
