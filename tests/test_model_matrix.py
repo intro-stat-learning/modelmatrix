@@ -1,4 +1,5 @@
 import numpy as np, pandas as pd
+import pytest
 from sklearn.base import clone
 
 from modelmatrix.transforms import Poly, NaturalSpline, BSpline, Interaction
@@ -368,3 +369,19 @@ def test_pca():
 
     
     
+
+
+@pytest.mark.parametrize('feature', [poly('x', 3), ns('x', df=4), bs('x', df=5)],
+                         ids=['poly', 'ns', 'bs'])
+def test_missing_values_pass_through(feature):
+    # as scikit-learn's transformers: fit on the observed values,
+    # missing in the rows where the variable is missing
+    rng = np.random.default_rng(0)
+    D = pd.DataFrame({'x': rng.standard_normal(50)})
+    D.loc[[3, 17], 'x'] = np.nan
+    X = ModelSpec([feature]).fit(D).transform(D)
+    assert list(np.where(X.isna().any(axis=1))[0]) == [3, 17]
+    assert X.drop(index=[3, 17]).notna().all().all()
+    observed = D.dropna()
+    np.testing.assert_allclose(X.drop(index=[3, 17]),
+                               ModelSpec([feature]).fit(observed).transform(observed))

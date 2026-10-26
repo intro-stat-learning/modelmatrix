@@ -13,11 +13,12 @@ kernelspec:
 
 # Responses and the wildcard
 
-A `ModelSpec` can also describe the response of a model,
-`ModelSpec(terms, response=...)`, and `build_response` then builds it
-from the same data as the design. With a response,
-`wildcard` stands for every other column, as `.` in R's
-formulae: `ModelSpec([wildcard], response='Sales')` is
+As in scikit-learn, the design `X` and the response `y` are built
+separately: a `ModelSpec` builds the design, and a response, such as
+`Surv`, `Binomial` or `Multinomial`, builds `y` from the same data.
+`wildcard` stands for every column, as `.` in R's formulae, and
+`wildcard(exclude=...)` leaves out the response:
+`ModelSpec([wildcard(exclude='Sales')])` is the design of R's
 `Sales ~ .`.
 
 ```{code-cell} ipython3
@@ -42,8 +43,8 @@ Carseats = load_data('Carseats')
 ## `y ~ .`
 
 ```{code-cell} ipython3
-spec = MS([wildcard], response='Sales', intercept=True).fit(Carseats)
-X, y = spec.transform(Carseats), spec.build_response(Carseats)
+spec = MS([wildcard(exclude='Sales')], intercept=True).fit(Carseats)
+X, y = spec.transform(Carseats), Carseats['Sales']
 sm.OLS(y, X).fit().params
 ```
 
@@ -55,11 +56,11 @@ spec.terms, spec.expanded_terms_
 ```
 
 Columns that are terms themselves are not repeated, as in R's
-`Sales ~ Price + .`, and `wildcard(exclude=...)` is R's `. - x`:
+`Sales ~ Price + .`, and more columns can be excluded, as R's `. - x`:
 
 ```{code-cell} ipython3
-MS([poly('Price', 2), 'Price', wildcard(exclude=['Population', 'Education'])],
-   response='Sales').fit(Carseats).expanded_terms_
+MS([poly('Price', 2), 'Price',
+    wildcard(exclude=['Sales', 'Population', 'Education'])]).fit(Carseats).expanded_terms_
 ```
 
 ## `y ~ .^2` and `.:x`
@@ -69,11 +70,11 @@ and the wildcard can be a part of an interaction, as R's `.:US`:
 
 ```{code-cell} ipython3
 small = Carseats[['Sales', 'Price', 'Income', 'US']]
-MS([wildcard(pow=2)], response='Sales').fit(small).expanded_terms_
+MS([wildcard(pow=2, exclude='Sales')]).fit(small).expanded_terms_
 ```
 
 ```{code-cell} ipython3
-MS(['US', (wildcard, 'US')], response='Sales').fit(small).expanded_terms_
+MS(['US', (wildcard(exclude=['Sales', 'US']), 'US')]).fit(small).expanded_terms_
 ```
 
 ## Features of the wildcard
@@ -82,26 +83,33 @@ A wildcard can be a variable of a feature: here, the first principal
 components of the numeric columns, but the response.
 
 ```{code-cell} ipython3
-pc = pca(wildcard(exclude=['ShelveLoc', 'Urban', 'US']), n_components=3, scale=True)
-spec = MS([pc, 'ShelveLoc'], response='Sales').fit(Carseats)
+pc = pca(wildcard(exclude=['Sales', 'ShelveLoc', 'Urban', 'US']), n_components=3, scale=True)
+spec = MS([pc, 'ShelveLoc']).fit(Carseats)
 spec.transform(Carseats).iloc[:5]
 ```
 
 Its parameters are tuned as those of any term:
 
 ```{code-cell} ipython3
-y = spec.build_response(Carseats)
-pipe = make_pipeline(MS([pc, 'ShelveLoc'], response='Sales'), LinearRegression())
+pipe = make_pipeline(MS([pc, 'ShelveLoc']), LinearRegression())
 grid = GridSearchCV(pipe, {'modelspec__terms__0__n_components': [1, 3, 5, 7]}, cv=5)
-grid.fit(Carseats, y)
+grid.fit(Carseats, Carseats['Sales'])
 grid.best_params_
 ```
 
-The response is passed to `fit` as `y` (a `Pipeline` passes the design's
-data only to the `ModelSpec`). When both are pandas objects, `ModelSpec.fit`
-checks that their indices agree.
+When `X` and `y` are both pandas objects, `ModelSpec.fit` checks that
+their indices agree.
 
-## Survival responses: `Surv`
+## Responses
+
+A response is fit, e.g. to learn the levels of a categorical, so that
+it is coded the same way on new data, and `transform` builds it:
+`response.fit_transform(D)`. For a dataframe of another backend, such
+as polars, the response is in that backend. `wildcard(exclude=response)`
+leaves out the response's columns, so that it is not a term of its own
+design.
+
+### Survival responses: `Surv`
 
 `Surv(time, status)` is R's survival response, and `Surv(start, stop,
 status)` that of (start, stop] intervals. The response is a
@@ -110,8 +118,9 @@ status)` that of (start, stop] intervals. The response is a
 
 ```{code-cell} ipython3
 BrainCancer = load_data('BrainCancer').dropna()
-spec = MS([wildcard], response=Surv('time', 'status')).fit(BrainCancer)
-X, y = spec.transform(BrainCancer), spec.build_response(BrainCancer)
+response = Surv('time', 'status')
+y = response.fit_transform(BrainCancer)
+X = MS([wildcard(exclude=response)]).fit_transform(BrainCancer)
 y.iloc[:5]
 ```
 
@@ -119,14 +128,13 @@ y.iloc[:5]
 sm.PHReg(y['time'], X, status=y['status']).fit().params
 ```
 
-## Binomial responses
+### Binomial responses
 
 `Binomial('US')` codes a binary column as 0 and 1, the second level, as in
 R, being a success (or the one given by `level=`):
 
 ```{code-cell} ipython3
-spec = MS(['Price', 'Income'], response=Binomial('US'), intercept=True).fit(Carseats)
-y = spec.build_response(Carseats)
+y = Binomial('US').fit_transform(Carseats)
 pd.crosstab(y, Carseats['US'])
 ```
 
@@ -140,15 +148,15 @@ rng = np.random.default_rng(0)
 D = pd.DataFrame({'x': rng.standard_normal(50), 'size': rng.integers(5, 20, 50)})
 D['cases'] = rng.binomial(D['size'], 1 / (1 + np.exp(-D['x'])))
 
-counts = MS(['x'], response=Binomial('cases', trials='size')).fit(D).build_response(D)
-prop = MS(['x'], response=Binomial('cases', trials='size', output='proportion')).fit(D).build_response(D)
+counts = Binomial('cases', trials='size').fit_transform(D)
+prop = Binomial('cases', trials='size', output='proportion').fit_transform(D)
 X = MS(['x'], intercept=True).fit_transform(D)
 family = sm.families.Binomial()
 (sm.GLM(counts, X, family=family).fit().params,
  sm.GLM(prop['cases/size'], X, family=family, var_weights=prop['size']).fit().params)
 ```
 
-## Multinomial responses
+### Multinomial responses
 
 `Multinomial('ShelveLoc')` gives the class of each row as a categorical
 whose categories are the levels seen at fit, and with `output='onehot'`
@@ -156,6 +164,25 @@ an indicator column for each level; `Multinomial([...])` takes a column
 of counts for each class.
 
 ```{code-cell} ipython3
-spec = MS(['Price', 'Sales'], response=Multinomial('ShelveLoc', output='onehot')).fit(Carseats)
-spec.build_response(Carseats).iloc[:5]
+Multinomial('ShelveLoc', output='onehot').fit_transform(Carseats).iloc[:5]
+```
+
+## Missing values
+
+As scikit-learn's transformers, a `ModelSpec` keeps every row: a row
+of the design is missing where a variable it uses is missing (a
+`poly` or spline is fit on the observed values), and so is the
+response. A transformer cannot drop rows of `X` without those of `y`,
+so the rows to keep, those of R's `na.omit`, are chosen outside the
+`ModelSpec` (or the missing values are imputed, e.g. with
+scikit-learn's `SimpleImputer`, for an estimator that does not take
+them).
+
+```{code-cell} ipython3
+Hitters = load_data('Hitters')
+X = MS([wildcard(exclude='Salary')]).fit_transform(Hitters)
+y = Hitters['Salary']
+keep = X.notna().all(axis=1) & y.notna()
+X, y = X[keep], y[keep]
+X.shape
 ```

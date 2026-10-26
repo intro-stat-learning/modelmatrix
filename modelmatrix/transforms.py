@@ -38,6 +38,24 @@ def _single_column(X):
         raise ValueError('expecting a single column feature')
     return X
 
+def _observed(X):
+    # the observed (not missing) values of a single feature, and where
+    # the missing ones are: as scikit-learn's transformers, a feature is
+    # fit on the observed values and is missing where the variable is
+    missing = np.isnan(X)
+    if missing.all():
+        raise ValueError('all the values of the feature are missing')
+    return X[~missing], missing
+
+def _fill_missing(value, missing):
+    # the rows of `value` for the observed values, rows of NaN
+    # for the missing ones
+    if not missing.any():
+        return value
+    full = np.full((missing.shape[0],) + value.shape[1:], np.nan)
+    full[~missing] = value
+    return full
+
 class Poly(TransformerMixin, BaseEstimator):
 
     '''
@@ -85,7 +103,7 @@ class Poly(TransformerMixin, BaseEstimator):
         """
         
         X_orig = X
-        X = _single_column(X)
+        X, _ = _observed(_single_column(X))
         n = X.shape[0]
 
         self.mean_ = X.mean()
@@ -134,8 +152,7 @@ class Poly(TransformerMixin, BaseEstimator):
         check_is_fitted(self)
 
         X_orig = X
-        
-        X = _single_column(X)
+        X, missing = _observed(_single_column(X))
         n = X.shape[0]
 
         if not self.raw:
@@ -153,6 +170,7 @@ class Poly(TransformerMixin, BaseEstimator):
 
         if not self.intercept:
             powX = powX[:,1:]
+        powX = _fill_missing(powX, missing)
 
         if isinstance(X_orig, (pd.Series, pd.DataFrame)):
             df = pd.DataFrame(powX,
@@ -395,7 +413,7 @@ class BSpline(TransformerMixin, BaseEstimator):
         """
         
         X_orig = X
-        X = _single_column(X)
+        X, _ = _observed(_single_column(X))
         n = X.shape[0]
 
         order = self.degree + 1
@@ -472,7 +490,7 @@ class BSpline(TransformerMixin, BaseEstimator):
         check_is_fitted(self)
 
         X_orig = X
-        X = _single_column(X)
+        X, missing = _observed(_single_column(X))
         n = X.shape[0]
 
         value = _splevf(X,
@@ -481,6 +499,7 @@ class BSpline(TransformerMixin, BaseEstimator):
                         ext=self.ext)
         if not self.intercept:
             value = value[:,1:]
+        value = _fill_missing(value, missing)
         columns_ = self.columns_
 
         if isinstance(X_orig, (pd.Series, pd.DataFrame)):
@@ -559,7 +578,7 @@ class NaturalSpline(TransformerMixin, BaseEstimator):
         """
         
         X_orig = X
-        X = _single_column(X)
+        X, _ = _observed(_single_column(X))
         n = X.shape[0]
 
         order = 4
@@ -651,7 +670,7 @@ class NaturalSpline(TransformerMixin, BaseEstimator):
         lower_bound, upper_bound = self.boundary_knots_
 
         X_orig = X
-        X = _single_column(X)
+        X, missing = _observed(_single_column(X))
         n = X.shape[0]
 
         value = np.empty((X.shape[0], self.nbasis_))
@@ -683,7 +702,7 @@ class NaturalSpline(TransformerMixin, BaseEstimator):
 
         # map onto the natural splines
 
-        value = value.dot(self.Qproj_)
+        value = _fill_missing(value.dot(self.Qproj_), missing)
         if isinstance(X_orig, (pd.Series, pd.DataFrame)):
             df = pd.DataFrame(value,
                               columns=self.columns_,
