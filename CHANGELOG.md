@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.1.0
+## 0.1.0 (2026-10-26)
 
 `ModelSpec`, from [ISLP](https://github.com/intro-stat-learning/ISLP) 0.6.0,
 as its own package, with the history of its files. ISLP 0.7 depends on it,
