@@ -13,8 +13,11 @@ from .model_spec import (ModelSpec,
                          pca,
                          contrast,
                          ordinal,
-                         build_columns)
+                         build_columns,
+                         wildcard,
+                         Wildcard)
 from .columns import Column
+from .response import Response, Surv, Binomial, Multinomial
 
 try:
     from ._version import version as __version__
@@ -23,4 +26,5 @@ except ImportError:  # not installed
 
 __all__ = ['ModelSpec', 'Feature', 'Column', 'Contrast', 'Ordinal',
            'poly', 'ns', 'bs', 'derived_feature', 'pca', 'contrast',
-           'ordinal', 'build_columns']
+           'ordinal', 'build_columns', 'wildcard', 'Wildcard',
+           'Response', 'Surv', 'Binomial', 'Multinomial']

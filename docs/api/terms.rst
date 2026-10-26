@@ -13,6 +13,13 @@ Helpers that make terms
 .. autofunction:: modelmatrix.derived_feature
 .. autofunction:: modelmatrix.build_columns
 
+The wildcard
+------------
+
+.. autodata:: modelmatrix.wildcard
+   :annotation: = Wildcard()
+.. autoclass:: modelmatrix.Wildcard
+
 Terms and columns
 -----------------
 

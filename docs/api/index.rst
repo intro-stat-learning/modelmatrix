@@ -9,4 +9,5 @@ For the guide and examples, see the `modelmatrix documentation <../>`_.
 
    ModelSpec
    terms
+   responses
    transforms
