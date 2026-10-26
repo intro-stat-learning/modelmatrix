@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+### New features
+
+- **`Outcome`**: a response with the other columns a model takes with
+  it, each named by its keyword, so an estimator can find them by name:
+  `Outcome(Surv('time', 'status'), offset='O', weight='w', strata='inst')`
+  gives the columns `stop`, `status`, `offset`, `weight` and `strata`. A
+  column is taken as it is (a categorical keeps its labels); a feature of
+  a single column is fit as a term, e.g. `offset(log(exposure))`.
+  `wildcard(exclude=outcome)` leaves out all of its columns, and
+  `transform(X, response=False)` builds the offset of new data. With
+  `Binomial(..., output='proportion')`, the trials are the column
+  `weight`, times any weights given.
+- Dataframes of other backends keep a categorical column (as a polars
+  `Enum`).
+
+### Breaking changes
+
+- `Surv` names its columns by their role, `start`, `stop` and `status`
+  (as R's and lifelines'), not as in the data: `Surv('time', 'status')`
+  gives the columns `stop` and `status`.
+
 ## 0.2.0 (2026-10-26)
 
 ### New features

@@ -71,9 +71,7 @@ class Response(object):
             :py:class:`pd.DataFrame`), an :py:class:`np.ndarray` for
             an array.
         """
-        if not hasattr(self, 'columns_'):
-            raise NotFittedError(f'this {type(self).__name__} is not fitted yet: '
-                                 'call fit (or fit_transform) first')
+        self._check_fitted()
         X, to_native = _from_native(X, set(self.columns))
         y = self._transform(X)
         return y if to_native is None else to_native(y)
@@ -83,6 +81,11 @@ class Response(object):
         Fit the response on `X` and build it.
         """
         return self.fit(X).transform(X)
+
+    def _check_fitted(self):
+        if not hasattr(self, 'columns_'):
+            raise NotFittedError(f'this {type(self).__name__} is not fitted yet: '
+                                 'call fit (or fit_transform) first')
 
     def _fit(self, X):
         for col in self.columns:
@@ -147,10 +150,10 @@ class Surv(Response):
     Notes
     -----
 
-    The response is a :py:class:`pd.DataFrame` with columns `start`
-    (if given), `stop` and `status`, named as in `X`, e.g. for glmstar's
-    `CoxFamily(event_id=stop, status_id=status, start_id=start)` or for
-    lifelines' `CoxPHFitter`.
+    The response is a dataframe with columns named by their role,
+    whatever their names in `X`: `start` (if given), `stop` and `status`,
+    the names of R's `Surv` and of lifelines' `CoxTimeVaryingFitter`.
+    (scikit-survival's `Surv` is another object, a structured array.)
     """
 
     def __init__(self, *args, start=None, stop=None, status=None):
@@ -190,9 +193,9 @@ class Surv(Response):
             if (start >= stop).any():
                 raise ValueError(f'the start {self.start!r} of Surv should be less than '
                                  f'its stop {self.stop!r}')
-            D[self.start] = start.to_numpy()
-        D[self.stop] = stop.to_numpy()
-        D[self.status] = status.to_numpy()
+            D['start'] = start.to_numpy()
+        D['stop'] = stop.to_numpy()
+        D['status'] = status.to_numpy()
         index = X.index if isinstance(X, pd.DataFrame) else None
         return _output(pd.DataFrame(D, index=index), X)
 
