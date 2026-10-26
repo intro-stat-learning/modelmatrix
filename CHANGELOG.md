@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.0 (2026-10-26)
+
 ### New features
 
 - **`Outcome`**: a response with the other columns a model takes with
