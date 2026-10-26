@@ -30,7 +30,7 @@ Homepage = "https://github.com/intro-stat-learning/modelspec"
 Changelog = "https://github.com/intro-stat-learning/modelspec/blob/main/CHANGELOG.md"
 
 [dependency-groups]
-dev = ["pytest", "statsmodels", "polars", "pyarrow"]
+dev = ["pytest", "pytest-cov", "flake8", "statsmodels", "polars", "pyarrow"]
 
 [tool.setuptools]
 packages = ["modelmatrix"]

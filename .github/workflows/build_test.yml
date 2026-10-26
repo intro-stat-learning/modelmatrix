@@ -1,0 +1,84 @@
+name: Build and test
+
+# Linux (Python 3.12) on pull requests, into any branch; macOS, Linux and
+# Windows, Python 3.11-3.14, on pushes to main (merges), the weekly schedule
+# and by hand. Changes only to the docs or Markdown files do not run the tests.
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['docs/**', '**.md']
+  pull_request:
+    paths-ignore: ['docs/**', '**.md']
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+# a new push to a branch cancels the run still going for it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build (${{ matrix.os }}, ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include: >-
+          ${{ fromJSON(github.event_name == 'pull_request' && '[
+            {"os": "ubuntu-latest", "python-version": "3.12"}
+          ]' || '[
+            {"os": "ubuntu-latest", "python-version": "3.12"},
+            {"os": "windows-latest", "python-version": "3.12"},
+            {"os": "macos-latest", "python-version": "3.12"},
+            {"os": "ubuntu-latest", "python-version": "3.11"},
+            {"os": "ubuntu-latest", "python-version": "3.13"},
+            {"os": "ubuntu-latest", "python-version": "3.14"}
+          ]') }}
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0   # setuptools_scm takes the version from the tags
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "**/pyproject.toml"
+
+      - name: Set up Python
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install Project
+        run: uv sync --dev --python ${{ matrix.python-version }}
+
+      - name: Lint with flake8
+        run: |
+          uv run flake8 modelmatrix --count --select=E9,F63,F7,F82,W605 --show-source --statistics
+          uv run flake8 modelmatrix --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+      - name: Test with pytest
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          args=()
+          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.python-version }}" = "3.12" ]; then
+            args+=(--cov=modelmatrix --cov-report=term-missing)
+          fi
+          uv run pytest "${args[@]}"
+
+  build-dist:
+    # the sdist and wheel build, and the wheel installs and imports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v10.3.0
+      - run: uv build
+      - run: |
+          uv venv -p 3.12 /tmp/venv
+          uv pip install -p /tmp/venv dist/*.whl
+          /tmp/venv/bin/python -c "import modelmatrix; print(modelmatrix.__version__)"
