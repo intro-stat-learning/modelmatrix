@@ -1,16 +1,16 @@
 name: Build and test
 
-# Linux (Python 3.12) on pull requests, into any branch; macOS, Linux and
-# Windows, Python 3.11-3.14, on pushes to main (merges), the weekly schedule
-# and by hand. Changes only to the docs or Markdown files do not run the tests.
+# Linux (Python 3.12) on pull requests, into any branch; on pushes to main
+# (merges) and by hand, macOS and Windows (3.12) and Linux at the oldest and
+# newest Pythons (3.11, 3.14), and the sdist and wheel build. The package is
+# pure Python, so this is enough. Changes only to the docs or Markdown files
+# do not run the tests.
 on:
   push:
     branches: [main]
     paths-ignore: ['docs/**', '**.md']
   pull_request:
     paths-ignore: ['docs/**', '**.md']
-  schedule:
-    - cron: '0 6 * * 1'
   workflow_dispatch:
 
 # a new push to a branch cancels the run still going for it
@@ -29,11 +29,9 @@ jobs:
           ${{ fromJSON(github.event_name == 'pull_request' && '[
             {"os": "ubuntu-latest", "python-version": "3.12"}
           ]' || '[
-            {"os": "ubuntu-latest", "python-version": "3.12"},
             {"os": "windows-latest", "python-version": "3.12"},
             {"os": "macos-latest", "python-version": "3.12"},
             {"os": "ubuntu-latest", "python-version": "3.11"},
-            {"os": "ubuntu-latest", "python-version": "3.13"},
             {"os": "ubuntu-latest", "python-version": "3.14"}
           ]') }}
 
@@ -64,13 +62,14 @@ jobs:
         shell: bash
         run: |
           args=()
-          if [ "${{ matrix.os }}" = "ubuntu-latest" ] && [ "${{ matrix.python-version }}" = "3.12" ]; then
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
             args+=(--cov=modelmatrix --cov-report=term-missing)
           fi
           uv run pytest "${args[@]}"
 
   build-dist:
     # the sdist and wheel build, and the wheel installs and imports
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
