@@ -12,8 +12,8 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import cross_val_score
 from sklearn.pipeline import make_pipeline
 
-from ISLP import load_data
-from ISLP.models import ModelSpec as MS
+from _datasets import load_data
+from modelmatrix import ModelSpec as MS
 
 ADVICE = 'relies on the default of `intercept`'
 

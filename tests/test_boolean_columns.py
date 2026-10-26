@@ -3,7 +3,7 @@ import statsmodels.api as sm
 import numpy as np
 from itertools import combinations
 
-from ISLP.models import ModelSpec as MS
+from modelmatrix import ModelSpec as MS
 
 rng = np.random.default_rng(0)
 

@@ -19,18 +19,17 @@ from sklearn.utils.validation import check_is_fitted
 from sklearn.exceptions import NotFittedError
 import statsmodels.api as sm
 
-from ISLP import load_data
-from ISLP.models import (ModelSpec as MS,
+from _datasets import load_data
+from modelmatrix import (ModelSpec as MS,
                          ordinal,
                          poly,
                          ns,
                          bs,
                          pca,
                          contrast,
-                         derived_feature,
-                         sklearn_sm)
-from ISLP.models.model_spec import Contrast, Ordinal
-from ISLP.transforms import Poly, BSpline, NaturalSpline
+                         derived_feature)
+from modelmatrix.model_spec import Contrast, Ordinal
+from modelmatrix.transforms import Poly, BSpline, NaturalSpline
 
 bug = lambda reason: pytest.mark.xfail(strict=True, reason=reason)
 
@@ -254,7 +253,8 @@ def test_shared_feature_fit_once(D):
 
 def test_cv_prefitted_spec(D):
     M = MS([poly('x', 3), 'g']).fit(D)
-    cross_val_score(sklearn_sm(sm.OLS, M), D, D.z, cv=4, error_score='raise')
+    cross_val_score(make_pipeline(M, LinearRegression()), D, D.z, cv=4,
+                    error_score='raise')
 
 def test_cv_folds_refit_encoders(D):
     # each fold's design must be fit on that fold alone
@@ -308,7 +308,7 @@ def frozen(D):
     FrozenEstimator = pytest.importorskip('sklearn.frozen').FrozenEstimator
     from sklearn.decomposition import PCA
     from sklearn.neighbors import KNeighborsRegressor
-    from ISLP.models import derived_feature
+    from modelmatrix import derived_feature
     other = D.assign(x=D.x * 2 + 1, z=D.z + 3)
     XZ = other[['x', 'z']]
     knn = KNeighborsRegressor(5).fit(XZ, other.x + other.z)
@@ -349,7 +349,7 @@ def test_frozen_survives_refit_clone_cv_pickle(D, frozen):
 def test_frozen_unfitted_raises(D):
     FrozenEstimator = pytest.importorskip('sklearn.frozen').FrozenEstimator
     from sklearn.decomposition import PCA
-    from ISLP.models import derived_feature
+    from modelmatrix import derived_feature
     f = derived_feature(['x', 'z'], encoder=FrozenEstimator(PCA(1)), name='pc')
     # freezing an unfitted model is an error: ModelSpec tries to fit it
     with pytest.raises((NotFittedError, TypeError)):
@@ -358,7 +358,7 @@ def test_frozen_unfitted_raises(D):
 def test_prefit_unfrozen_encoder_is_refit(D):
     # a fitted (but not frozen) encoder is cloned, so refit on the spec's data
     from sklearn.decomposition import PCA
-    from ISLP.models import derived_feature
+    from modelmatrix import derived_feature
     pc = PCA(n_components=1).fit(D[['x', 'z']].values * 10)
     components = pc.components_.copy()
     M = MS([derived_feature(['x', 'z'], encoder=pc, name='pc')]).fit(D)
@@ -367,24 +367,6 @@ def test_prefit_unfrozen_encoder_is_refit(D):
     np.testing.assert_allclose(pc.components_, components)   # original untouched
 
 #### known bugs
-
-# strategy.py: the ModelSpec <-> selection boundary
-
-@bug('_postprocess_best reduces state to names; build_submodel cannot resolve derived names')
-@pytest.mark.parametrize('term', [poly('z', 2), ('x', 'z')])
-def test_stepwise_with_derived_term(D, term):
-    from ISLP.models import Stepwise, sklearn_selected
-    M = MS(['x', term, 'g']).fit(D)
-    strategy = Stepwise.first_peak(M, direction='forward', max_terms=3)
-    sklearn_selected(sm.OLS, strategy).fit(D, D.x + D.z)
-
-def test_best_1sd_picks_smaller_model():
-    from ISLP.models.strategy import _postprocess_best_1sd
-    class T(str):
-        name = property(str)
-    results = [((T('a'),), 0, np.array([-1.0, -1.1, -0.9])),
-               ((T('a'), T('b')), 1, np.array([-0.98, -0.99, -0.97]))]
-    assert _postprocess_best_1sd(results)[0] == ('a',)
 
 # sklearn API conformance
 
@@ -496,7 +478,7 @@ def test_column_get_columns_requires_fit(D):
 
 def test_column_stateless_encoder(D):
     # an encoder with nothing to fit is used without checks
-    from ISLP.models.columns import Column
+    from modelmatrix.columns import Column
     from sklearn.base import BaseEstimator, TransformerMixin
     class Double(TransformerMixin, BaseEstimator):
         def fit(self, X, y=None):

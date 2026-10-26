@@ -9,16 +9,16 @@ from sklearn.base import clone
 from sklearn.decomposition import PCA
 from sklearn.preprocessing import StandardScaler
 
-from ISLP import load_data
-from ISLP.models import (ModelSpec as MS,
+from _datasets import load_data
+from modelmatrix import (ModelSpec as MS,
                          contrast,
                          ordinal,
                          poly,
                          ns,
                          bs,
                          pca)
-from ISLP.models.model_spec import Contrast
-from ISLP.transforms import Poly, NaturalSpline, BSpline
+from modelmatrix.model_spec import Contrast
+from modelmatrix.transforms import Poly, NaturalSpline, BSpline
 
 @pytest.fixture(scope='module')
 def Carseats():

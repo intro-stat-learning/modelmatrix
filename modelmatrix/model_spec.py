@@ -31,10 +31,10 @@ from .columns import (_get_column_info,
                       _categorical_from_df,
                       _check_categories)
 
-from ..transforms import (Poly,
-                          BSpline,
-                          NaturalSpline,
-                          Interaction)
+from .transforms import (Poly,
+                         BSpline,
+                         NaturalSpline,
+                         Interaction)
 
 DOCACHE = False
 
@@ -1541,7 +1541,7 @@ def bs(col, intercept=False, name=None, **spline_args):
     for a given column.
     
     Additional args and *spline_args*
-    are passed to :py:class:`ISLP.transforms.BSpline`
+    are passed to :py:class:`modelmatrix.transforms.BSpline`
     along with *intercept*.
 
     Parameters
@@ -1586,7 +1586,7 @@ def pca(variables, name, scale=False, **pca_args):
     from a sequence of variables.
     
     Additional args and *pca_args*
-    are passed to :py:class:`ISLP.transforms.PCA`.
+    are passed to :py:class:`modelmatrix.transforms.PCA`.
 
     Parameters
     ----------

@@ -2,8 +2,8 @@ import numpy as np, pandas as pd
 from sklearn.base import clone
 
 from pandas.api.types import CategoricalDtype
-from ISLP.models.columns import _get_column_info
-from ISLP.models.model_spec import Contrast
+from modelmatrix.columns import _get_column_info
+from modelmatrix.model_spec import Contrast
 
 def test_column_info():
 

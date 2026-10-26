@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modelmatrix"
+dynamic = ["version"]
+description = "Model matrices from tabular data, as scikit-learn transformers"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+authors = [{name = "Jonathan Taylor", email = "jonathan.taylor@stanford.edu"}]
+requires-python = ">=3.11"
+dependencies = [
+    "numpy>=1.7.1",
+    "pandas>=1.5",
+    "scipy>=0.9",
+    "scikit-learn>=1.2",
+    "narwhals>=1.26",
+    "joblib",
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering",
+]
+
+[project.urls]
+Homepage = "https://github.com/intro-stat-learning/modelspec"
+Changelog = "https://github.com/intro-stat-learning/modelspec/blob/main/CHANGELOG.md"
+
+[dependency-groups]
+dev = ["pytest", "statsmodels", "polars", "pyarrow"]
+
+[tool.setuptools]
+packages = ["modelmatrix"]
+
+[tool.setuptools_scm]
+version_file = "modelmatrix/_version.py"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
