@@ -11,7 +11,9 @@
   `Outcome(['y1', 'y2'], offset={'y1': 'O1', 'y2': 'O2'})` gives the
   columns `y1`, `y2`, `offset[y1]` and `offset[y2]`, in the order of the
   responses; a missing or unknown key raises. A single column,
-  `offset='O'`, is still one column, the same for every response.
+  `offset='O'`, is still one column, the same for every response. The
+  dict works for any keyword, e.g. `weight={'y1': 'w1', 'y2': 'w2'}` for
+  weights of each response.
 
 ## 0.3.0 (2026-10-26)
 

@@ -95,6 +95,8 @@ class Outcome(Response):
         `offset={'y1': 'O1', 'y2': 'O2'}` gives the columns
         `offset[y1]` and `offset[y2]`, in the order of the responses.
         A single column, `offset='O'`, is the same for every response.
+        Any keyword can be a dict, e.g. `weight=` for weights of each
+        response.
 
     Notes
     -----

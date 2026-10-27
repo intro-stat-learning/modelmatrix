@@ -206,7 +206,8 @@ A multi-response model, with a linear predictor for each response,
 takes an offset for each: a dict, keyed by the responses (the columns
 of a list of columns, or the classes of a `Multinomial`, whatever its
 output), gives the columns `offset[...]` in the order of the responses.
-A single column is the same offset for every response.
+A single column is the same offset for every response. The dict works
+for any keyword, e.g. `weight={...}` for weights of each response.
 
 ```{code-cell} ipython3
 Carseats['O'] = 0.5

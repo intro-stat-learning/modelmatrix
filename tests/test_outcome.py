@@ -210,3 +210,10 @@ def test_offset_for_each_response_polars(M):
     y = Outcome(['y1', 'y2'], offset={'y1': 'O1', 'y2': 'O2'}).fit_transform(pl.from_pandas(M))
     assert isinstance(y, pl.DataFrame)
     assert y.columns == ['y1', 'y2', 'offset[y1]', 'offset[y2]']
+
+
+def test_weights_for_each_response(M):
+    W = M.assign(w1=1.0, w2=0.5)
+    y = Outcome(['y1', 'y2'], offset='O', weight={'y1': 'w1', 'y2': 'w2'}).fit_transform(W)
+    assert list(y.columns) == ['y1', 'y2', 'offset', 'weight[y1]', 'weight[y2]']
+    np.testing.assert_allclose(y['weight[y2]'], 0.5)
