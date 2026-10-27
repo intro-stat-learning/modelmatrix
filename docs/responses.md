@@ -202,6 +202,19 @@ y = outcome.fit_transform(BrainCancer)
 y.iloc[:5]
 ```
 
+A multi-response model, with a linear predictor for each response,
+takes an offset for each: a dict, keyed by the responses (the columns
+of a list of columns, or the classes of a `Multinomial`, whatever its
+output), gives the columns `offset[...]` in the order of the responses.
+A single column is the same offset for every response.
+
+```{code-cell} ipython3
+Carseats['O'] = 0.5
+outcome = Outcome(Multinomial('ShelveLoc'),
+                  offset={'Bad': 'O', 'Good': 'Income', 'Medium': 'O'})
+outcome.fit_transform(Carseats).iloc[:3]
+```
+
 The offset of new data, whose response is not known, is
 `outcome.transform(new, response=False)`. With a `Binomial` of
 `output='proportion'`, the number of trials is the column `weight`
