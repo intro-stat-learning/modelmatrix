@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.3.1 (2026-10-26)
+
 ### New features
 
 - **Offsets of multi-response models**: in `Outcome`, a dict gives one
