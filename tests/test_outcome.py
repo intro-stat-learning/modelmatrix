@@ -142,3 +142,71 @@ def test_native(D, backend):
     assert y_nw['strata'].to_list() == list(D['inst'])
     if backend == 'polars':
         assert y['strata'].dtype == lib.Enum(['a', 'b', 'c'])
+
+
+# multi-response models: one column for each response
+
+@pytest.fixture
+def M():
+    rng = np.random.default_rng(3)
+    n = 30
+    return pd.DataFrame({'y1': rng.standard_normal(n), 'y2': rng.standard_normal(n),
+                         'O1': rng.standard_normal(n), 'O2': rng.standard_normal(n),
+                         'O': rng.standard_normal(n), 'exposure': rng.uniform(1, 5, n),
+                         'kind': pd.Categorical(rng.choice(['lo', 'mid', 'hi'], n),
+                                                categories=['lo', 'mid', 'hi']),
+                         'x': rng.standard_normal(n)})
+
+
+def test_offset_for_each_response(M):
+    # in the order of the responses, whatever the order of the dict
+    Y = Outcome(['y1', 'y2'], offset={'y2': 'O2', 'y1': log_exposure})
+    y = Y.fit_transform(M)
+    assert list(y.columns) == ['y1', 'y2', 'offset[y1]', 'offset[y2]']
+    np.testing.assert_allclose(y[['y1', 'y2']], M[['y1', 'y2']])
+    np.testing.assert_allclose(y['offset[y1]'], np.log(M['exposure']))
+    np.testing.assert_allclose(y['offset[y2]'], M['O2'])
+    assert Y.columns == ('y1', 'y2', 'O2', 'exposure')
+    assert MS([wildcard(exclude=Y)]).fit(M).expanded_terms_ == ['O1', 'O', 'kind', 'x']
+    assert repr(Y) == "Outcome(['y1', 'y2'], offset={'y2': 'O2', 'y1': log(exposure)})"
+    # new data, without the responses
+    O = Y.transform(M.drop(columns=['y1', 'y2']), response=False)
+    assert list(O.columns) == ['offset[y1]', 'offset[y2]']
+
+
+def test_one_offset_for_every_response(M):
+    y = Outcome(['y1', 'y2'], offset='O').fit_transform(M)
+    assert list(y.columns) == ['y1', 'y2', 'offset']
+
+
+@pytest.mark.parametrize('output', ['labels', 'onehot'])
+def test_offset_for_each_class(M, output):
+    # keyed by the classes, whatever the output of the Multinomial
+    Y = Outcome(Multinomial('kind', output=output),
+                offset={'hi': 'O', 'lo': 'O1', 'mid': 'O2'})
+    y = Y.fit_transform(M)
+    offsets = ['offset[lo]', 'offset[mid]', 'offset[hi]']
+    assert list(y.columns)[-3:] == offsets
+    np.testing.assert_allclose(y[offsets], M[['O1', 'O2', 'O']])
+    # the classes of counts are their columns
+    C = M.assign(n_lo=1, n_hi=2)
+    y = Outcome(Multinomial(['n_lo', 'n_hi']), offset={'n_lo': 'O1', 'n_hi': 'O2'}).fit_transform(C)
+    assert list(y.columns) == ['n_lo', 'n_hi', 'offset[n_lo]', 'offset[n_hi]']
+
+
+def test_offset_for_each_response_errors(M):
+    with pytest.raises(ValueError, match=r"missing \['y2'\], unknown \['y3'\]"):
+        Outcome(['y1', 'y2'], offset={'y1': 'O1', 'y3': 'O2'}).fit(M)
+    with pytest.raises(ValueError, match="missing \\['hi'\\]"):
+        Outcome(Multinomial('kind'), offset={'lo': 'O1', 'mid': 'O2'}).fit(M)
+    with pytest.raises(ValueError, match='not a multi-response'):
+        Outcome('y1', offset={'y1': 'O1'}).fit(M)
+    with pytest.raises(ValueError, match='single column'):
+        Outcome(['y1', 'y2'], offset={'y1': poly('x', 2), 'y2': 'O2'}).fit(M)
+
+
+def test_offset_for_each_response_polars(M):
+    pl = pytest.importorskip('polars')
+    y = Outcome(['y1', 'y2'], offset={'y1': 'O1', 'y2': 'O2'}).fit_transform(pl.from_pandas(M))
+    assert isinstance(y, pl.DataFrame)
+    assert y.columns == ['y1', 'y2', 'offset[y1]', 'offset[y2]']

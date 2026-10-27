@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### New features
+
+- **Offsets of multi-response models**: in `Outcome`, a dict gives one
+  column for each response, keyed by the responses: the columns of a
+  list of columns (now a response of `Outcome` too), or the classes of a
+  `Multinomial`, whatever its output.
+  `Outcome(['y1', 'y2'], offset={'y1': 'O1', 'y2': 'O2'})` gives the
+  columns `y1`, `y2`, `offset[y1]` and `offset[y2]`, in the order of the
+  responses; a missing or unknown key raises. A single column,
+  `offset='O'`, is still one column, the same for every response.
+
 ## 0.3.0 (2026-10-26)
 
 ### New features

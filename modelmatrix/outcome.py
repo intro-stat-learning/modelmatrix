@@ -15,7 +15,7 @@ import numpy as np, pandas as pd
 
 from ._native import _from_native
 from .model_spec import ModelSpec, Feature, _term_columns
-from .response import Response, Binomial, _values, _output
+from .response import Response, Binomial, Multinomial, _values, _output
 
 
 class _Column(Response):
@@ -36,6 +36,38 @@ class _Column(Response):
         return repr(self.column)
 
 
+class _Columns(Response):
+
+    # columns of X as they are: the responses of a multi-response model
+
+    def __init__(self, columns):
+        self.column_list = list(columns)
+
+    @property
+    def columns(self):
+        return tuple(self.column_list)
+
+    def _transform(self, X):
+        return pd.DataFrame({c: _values(X, c).to_numpy() for c in self.column_list},
+                            index=X.index if isinstance(X, pd.DataFrame) else None)
+
+    def __repr__(self):
+        return repr(self.column_list)
+
+
+def _components(response):
+    # the responses of a fitted multi-response model, each with its own
+    # linear predictor: the columns of a list of columns, the classes of
+    # a Multinomial (its levels, whatever its output), else None
+    if isinstance(response, _Columns):
+        return list(response.column_list)
+    if isinstance(response, Multinomial):
+        if isinstance(response.classes, list):
+            return list(response.classes)
+        return list(response.levels_)
+    return None
+
+
 class Outcome(Response):
 
     """
@@ -44,16 +76,25 @@ class Outcome(Response):
     Parameters
     ----------
 
-    response : Response or column identifier
+    response : Response, column identifier, or list of them
         The response: a :py:class:`Surv`, :py:class:`Binomial` or
-        :py:class:`Multinomial`, or a column of `X` as it is.
+        :py:class:`Multinomial`, or a column of `X` as it is, or a list
+        of columns, the responses of a multi-response model.
 
-    **columns : column identifier or Feature
+    **columns : column identifier, Feature, or dict of them
         Other columns, each named by its keyword, e.g. `offset='O'` or
         `weight='w'`: a column of `X`, as it is (a categorical, such as
         the strata of a Cox model, keeps its labels), or a feature
         of a single column, e.g. the log of a column, fit as a term of a
         :py:class:`ModelSpec`.
+
+        For a multi-response model, a dict gives one column for each
+        response, e.g. an offset of each linear predictor: its keys are
+        the response's columns, or the classes of a
+        :py:class:`Multinomial` (whatever its output), and
+        `offset={'y1': 'O1', 'y2': 'O2'}` gives the columns
+        `offset[y1]` and `offset[y2]`, in the order of the responses.
+        A single column, `offset='O'`, is the same for every response.
 
     Notes
     -----
@@ -77,21 +118,41 @@ class Outcome(Response):
     def columns(self):
         cols = list(_as_response(self.response).columns)
         for name, value in self.extra.items():
-            if isinstance(value, Feature):
-                used = _term_columns([value])
-                if used is None:
-                    raise ValueError(f'the column {name!r} of an Outcome cannot use a wildcard')
-                cols.extend(sorted(used, key=str))
-            else:
-                cols.append(value)
+            values = value.values() if isinstance(value, dict) else [value]
+            for v in values:
+                if isinstance(v, Feature):
+                    used = _term_columns([v])
+                    if used is None:
+                        raise ValueError(f'the column {name!r} of an Outcome cannot use a wildcard')
+                    cols.extend(sorted(used, key=str))
+                else:
+                    cols.append(v)
         return tuple(dict.fromkeys(cols))
 
     def _fit(self, X):
         self.response_ = deepcopy(_as_response(self.response))
         self.response_._fit(X)
         self.response_.columns_ = self.response_.columns
-        self.specs_ = {}
+        # the other columns, by their names: a dict gives one for each
+        # response, in their order
+        self.entries_ = {}
         for name, value in self.extra.items():
+            if isinstance(value, dict):
+                components = _components(self.response_)
+                if components is None:
+                    raise ValueError(f'{name!r} is a dict, one column for each response, '
+                                     f'but {self.response!r} is not a multi-response')
+                missing = [c for c in components if c not in value]
+                unknown = [k for k in value if k not in components]
+                if missing or unknown:
+                    raise ValueError(f'the keys of {name!r} should be the responses {components}: '
+                                     f'missing {missing}, unknown {unknown}')
+                for c in components:
+                    self.entries_[f'{name}[{c}]'] = value[c]
+            else:
+                self.entries_[name] = value
+        self.specs_ = {}
+        for name, value in self.entries_.items():
             if isinstance(value, Feature):
                 spec = ModelSpec([value]).fit(X)
                 if len(spec.get_feature_names_out()) != 1:
@@ -144,7 +205,7 @@ class Outcome(Response):
                 weight = y.pop(self.response_.trials)
             parts.append(y)
         extra = {}
-        for name, value in self.extra.items():
+        for name, value in self.entries_.items():
             if name in self.specs_:
                 D = self.specs_[name].transform(X)
                 extra[name] = np.asarray(D, dtype=float)[:, 0]
@@ -162,12 +223,17 @@ class Outcome(Response):
         return _output(D, X_orig)
 
     def __repr__(self):
-        args = [repr(self.response)] + [f'{k}={v.name if isinstance(v, Feature) else repr(v)}'
-                                        for k, v in self.extra.items()]
+        def show(v):
+            if isinstance(v, dict):
+                return '{' + ', '.join(f'{k!r}: {show(u)}' for k, u in v.items()) + '}'
+            return v.name if isinstance(v, Feature) else repr(v)
+        args = [repr(self.response)] + [f'{k}={show(v)}' for k, v in self.extra.items()]
         return f'Outcome({", ".join(args)})'
 
 
 def _as_response(response):
     if isinstance(response, Response):
         return response
+    if isinstance(response, list):
+        return _Columns(response)
     return _Column(response)
